@@ -3,8 +3,10 @@
 
 import streamlit as st
 from database import upsert_record, get_record, get_all_records, get_all_plots
+from utils import setup_sidebar, rename_columns_cn
 
 st.set_page_config(page_title="土壤数据", page_icon="🪣")
+setup_sidebar()
 
 st.title("🪣 土壤基础数据")
 
@@ -81,6 +83,6 @@ st.markdown("### 📊 已录入数据")
 soil_df = get_all_records("soil_data")
 if not soil_df.empty:
     display_cols = [c for c in soil_df.columns if c not in ['id']]
-    st.dataframe(soil_df[display_cols], width='stretch', hide_index=True)
+    st.dataframe(rename_columns_cn(soil_df[display_cols]), width='stretch', hide_index=True)
 else:
     st.info("尚未录入任何土壤数据。")

@@ -4,9 +4,10 @@
 import streamlit as st
 import pandas as pd
 from database import init_plots, get_all_plots, reset_all_data
-from utils import BLOCKS, TREATMENT_CODES, TREATMENT_NAMES, TREATMENT_COLORS
+from utils import BLOCKS, TREATMENT_CODES, TREATMENT_NAMES, TREATMENT_COLORS, setup_sidebar
 
 st.set_page_config(page_title="小区管理", page_icon="📋")
+setup_sidebar()
 
 st.title("📋 小区管理")
 

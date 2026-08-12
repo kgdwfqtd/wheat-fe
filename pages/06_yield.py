@@ -4,10 +4,12 @@
 import streamlit as st
 from database import upsert_record, get_record, get_all_records, get_all_plots
 from form_helper import render_data_entry_page
+from utils import setup_sidebar, rename_columns_cn
 
 # 产量页面有自动计算逻辑，不完全使用通用渲染器
 
 st.set_page_config(page_title="产量数据", page_icon="🌾")
+setup_sidebar()
 st.title("🌾 产量及构成因素")
 
 plots_df = get_all_plots()
@@ -92,7 +94,7 @@ st.markdown("### 📊 已录入数据")
 yield_df = get_all_records("yield_data")
 if not yield_df.empty:
     display_cols = [c for c in yield_df.columns if c not in ['id', 'plot_id']]
-    st.dataframe(yield_df[display_cols], width='stretch', hide_index=True)
+    st.dataframe(rename_columns_cn(yield_df[display_cols]), width='stretch', hide_index=True)
 
     st.markdown("**产量快速统计**")
     sc = st.columns(4)

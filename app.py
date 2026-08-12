@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 from database import (init_db, init_plots, get_all_plots, get_completion_stats,
                        get_operations, get_treatment_table_matrix)
-from utils import TREATMENT_COLORS, TREATMENT_NAMES, TREATMENT_CODES
+from utils import TREATMENT_COLORS, TREATMENT_NAMES, TREATMENT_CODES, setup_sidebar, rename_columns_cn
 
 if __name__ == "__main__":
     from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
@@ -39,27 +39,7 @@ def clear_db_cache():
 
 setup_database()
 
-# ============================================================
-# 侧边栏导航
-# ============================================================
-st.sidebar.title("🌾 纳米铁肥小麦试验")
-st.sidebar.caption("数据记录管理系统")
-
-st.sidebar.markdown("---")
-st.sidebar.page_link("app.py", label="🏠 首页仪表盘", icon="🏠")
-st.sidebar.page_link("pages/01_plots.py", label="📋 小区管理", icon="📋")
-st.sidebar.markdown("---")
-st.sidebar.caption("📝 数据录入")
-st.sidebar.page_link("pages/02_soil.py", label="🪣 土壤数据", icon="🪣")
-st.sidebar.page_link("pages/03_phenology.py", label="📅 物候期 & 出苗", icon="📅")
-st.sidebar.page_link("pages/04_agronomic.py", label="🌱 农艺性状", icon="🌱")
-st.sidebar.page_link("pages/05_physiological.py", label="🔬 生理指标", icon="🔬")
-st.sidebar.page_link("pages/06_yield.py", label="🌾 产量数据", icon="🌾")
-st.sidebar.page_link("pages/07_quality.py", label="🏆 品质数据", icon="🏆")
-st.sidebar.markdown("---")
-st.sidebar.caption("📊 数据管理")
-st.sidebar.page_link("pages/08_operations.py", label="📝 操作日志", icon="📝")
-st.sidebar.page_link("pages/09_export.py", label="📥 数据导出 & 图表", icon="📥")
+setup_sidebar()
 
 # ============================================================
 # 主区域
@@ -152,7 +132,7 @@ st.markdown("### 📝 最近操作记录")
 
 ops_df = get_operations(limit=10)
 if not ops_df.empty:
-    st.dataframe(ops_df, width='stretch', hide_index=True)
+    st.dataframe(rename_columns_cn(ops_df), width='stretch', hide_index=True)
 else:
     st.info("暂无操作记录。请在「操作日志」页面记录试验操作。")
 

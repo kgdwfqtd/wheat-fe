@@ -6,8 +6,10 @@ import pandas as pd
 import io
 from datetime import date
 from database import export_to_excel, get_all_records, get_completion_stats, backup_db
+from utils import setup_sidebar, rename_columns_cn
 
 st.set_page_config(page_title="数据导出 & 图表", page_icon="📥")
+setup_sidebar()
 
 st.title("📥 数据导出 & 图表分析")
 
@@ -30,7 +32,7 @@ with tab1:
     df_preview = get_all_records(selected_table)
     if df_preview is not None and not df_preview.empty:
         id_cols = [c for c in df_preview.columns if c == 'id' or c == 'plot_id']
-        df_display = df_preview.drop(columns=[c for c in id_cols if c in df_preview.columns], errors='ignore')
+        df_display = rename_columns_cn(df_preview.drop(columns=[c for c in id_cols if c in df_preview.columns], errors='ignore'))
         st.dataframe(df_display, width='stretch', hide_index=True)
         st.caption(f"共 {len(df_display)} 条记录")
     else:

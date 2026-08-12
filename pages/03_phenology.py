@@ -4,8 +4,10 @@
 import streamlit as st
 from datetime import date
 from database import upsert_record, get_record, get_all_records, get_all_plots
+from utils import setup_sidebar, rename_columns_cn
 
 st.set_page_config(page_title="物候期 & 出苗", page_icon="📅")
+setup_sidebar()
 st.title("📅 物候期 & 出苗调查")
 
 plots_df = get_all_plots()
@@ -129,13 +131,13 @@ with col_a:
     st.markdown("**物候期记录**")
     if not pheno_df.empty:
         disp = [c for c in pheno_df.columns if c not in ['id', 'plot_id']]
-        st.dataframe(pheno_df[disp], width='stretch', hide_index=True)
+        st.dataframe(rename_columns_cn(pheno_df[disp]), width='stretch', hide_index=True)
     else:
         st.info("暂无数据")
 with col_b:
     st.markdown("**出苗调查**")
     if not emerg_df.empty:
         disp = [c for c in emerg_df.columns if c not in ['id', 'plot_id']]
-        st.dataframe(emerg_df[disp], width='stretch', hide_index=True)
+        st.dataframe(rename_columns_cn(emerg_df[disp]), width='stretch', hide_index=True)
     else:
         st.info("暂无数据")

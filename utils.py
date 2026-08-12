@@ -67,3 +67,111 @@ WEATHER_OPTIONS = ["晴", "多云", "阴", "小雨", "中雨", "大雨", "雾", 
 def make_plot_code(block, treatment):
     """生成小区编号，如 Ⅰ-CK"""
     return f"{block}-{treatment}"
+
+
+def setup_sidebar():
+    """渲染自定义中文侧边栏导航（默认英文导航已由 config.toml 禁用）"""
+    import streamlit as st
+
+    st.sidebar.title("🌾 纳米铁肥小麦试验")
+    st.sidebar.caption("数据记录管理系统")
+
+    st.sidebar.markdown("---")
+    st.sidebar.page_link("app.py", label="首页仪表盘", icon="🏠")
+    st.sidebar.page_link("pages/01_plots.py", label="小区管理", icon="📋")
+
+    st.sidebar.markdown("---")
+    st.sidebar.caption("📝 数据录入")
+    st.sidebar.page_link("pages/02_soil.py", label="土壤数据", icon="🪣")
+    st.sidebar.page_link("pages/03_phenology.py", label="物候期 & 出苗", icon="📅")
+    st.sidebar.page_link("pages/04_agronomic.py", label="农艺性状", icon="🌱")
+    st.sidebar.page_link("pages/05_physiological.py", label="生理指标", icon="🔬")
+    st.sidebar.page_link("pages/06_yield.py", label="产量数据", icon="🌾")
+    st.sidebar.page_link("pages/07_quality.py", label="品质数据", icon="🏆")
+
+    st.sidebar.markdown("---")
+    st.sidebar.caption("📊 数据管理")
+    st.sidebar.page_link("pages/08_operations.py", label="操作日志", icon="📝")
+    st.sidebar.page_link("pages/09_export.py", label="数据导出 & 图表", icon="📥")
+
+
+# ============================================================
+# 数据库列名 → 中文显示名映射
+# ============================================================
+COLUMN_NAME_MAP = {
+    "plot_code": "小区编号",
+    "block": "区组",
+    "treatment": "处理",
+    "area_m2": "面积(m²)",
+    "field_name": "田块",
+    "phase": "测定阶段",
+    "ph": "pH",
+    "fe_available": "有效铁(mg/kg)",
+    "fe_total": "全铁(g/kg)",
+    "organic_matter": "有机质(g/kg)",
+    "p_available": "有效磷(mg/kg)",
+    "k_available": "速效钾(mg/kg)",
+    "cec": "CEC(cmol/kg)",
+    "bulk_density": "容重(g/cm³)",
+    "sowing": "播种期",
+    "emergence": "出苗期",
+    "tillering": "分蘖期",
+    "overwinter": "越冬期",
+    "regreening": "返青期",
+    "jointing": "拔节期",
+    "heading": "抽穗期",
+    "flowering": "开花期",
+    "filling": "灌浆期",
+    "maturity": "成熟期",
+    "seeds_sown": "播种粒数",
+    "emerged_7d": "7天出苗数",
+    "rate_7d": "7天出苗率(%)",
+    "emerged_14d": "14天出苗数",
+    "rate_14d": "14天出苗率(%)",
+    "basic_seedlings": "基本苗数",
+    "tillers_prewinter": "越冬前分蘖(个/株)",
+    "tillers_postregreen": "返青后分蘖(个/株)",
+    "tillers_jointing": "拔节期分蘖(个/株)",
+    "plant_height": "株高(cm)",
+    "lai_jointing": "拔节期LAI",
+    "lai_heading": "抽穗期LAI",
+    "dry_weight_jointing": "拔节期干重(g/株)",
+    "dry_weight_heading": "抽穗期干重(g/株)",
+    "dry_weight_maturity": "成熟期干重(g/株)",
+    "root_dry_weight": "根系干重(g/株)",
+    "spad_jointing": "拔节期SPAD",
+    "spad_heading": "抽穗期SPAD",
+    "spad_filling": "灌浆期SPAD",
+    "photo_rate_heading": "抽穗期光合速率",
+    "photo_rate_filling": "灌浆期光合速率",
+    "active_fe_jointing": "拔节期活性铁",
+    "active_fe_filling": "灌浆期活性铁",
+    "cat": "CAT活性",
+    "pod": "POD活性",
+    "spikes_per_mu": "亩穗数(万穗/亩)",
+    "grains_per_spike": "穗粒数(粒/穗)",
+    "thousand_grain_wt_1": "千粒重第1组(g)",
+    "thousand_grain_wt_2": "千粒重第2组(g)",
+    "theoretical_yield": "理论产量(kg/亩)",
+    "actual_yield": "实际产量(kg/亩)",
+    "harvest_index": "收获指数",
+    "grain_protein": "籽粒蛋白质(%)",
+    "wet_gluten": "湿面筋(%)",
+    "sds_sedimentation": "SDS沉降值(mL)",
+    "grain_fe": "籽粒铁含量(mg/kg)",
+    "flour_fe": "面粉铁含量(mg/kg)",
+    "date": "日期",
+    "time": "时间",
+    "op_type": "操作类型",
+    "dosage": "用量/参数",
+    "weather": "天气",
+    "temperature": "温度(℃)",
+    "humidity": "湿度(%)",
+    "operator": "操作人",
+    "remarks": "备注",
+}
+
+
+def rename_columns_cn(df):
+    """将 DataFrame 英文列名替换为中文显示名"""
+    return df.rename(columns=COLUMN_NAME_MAP)

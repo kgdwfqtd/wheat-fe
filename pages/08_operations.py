@@ -7,10 +7,11 @@ from datetime import date, time as dtime
 from database import add_operation, get_operations, get_all_plots
 from utils import (
     BLOCKS, TREATMENT_CODES, TREATMENT_NAMES, OP_TYPES,
-    WEATHER_OPTIONS, NF_SPLIT, get_nf_plot_dose
+    WEATHER_OPTIONS, NF_SPLIT, get_nf_plot_dose, setup_sidebar, rename_columns_cn
 )
 
 st.set_page_config(page_title="操作日志", page_icon="📝")
+setup_sidebar()
 
 st.title("📝 操作日志")
 
@@ -93,7 +94,7 @@ with col_a:
 
 ops_df = get_operations(limit=limit)
 if not ops_df.empty:
-    st.dataframe(ops_df, width='stretch', hide_index=True)
+    st.dataframe(rename_columns_cn(ops_df), width='stretch', hide_index=True)
 else:
     st.info("暂无操作记录。")
 

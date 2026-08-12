@@ -3,6 +3,7 @@
 
 import streamlit as st
 from database import upsert_record, get_record, get_all_records, get_all_plots
+from utils import setup_sidebar, rename_columns_cn
 
 
 def render_data_entry_page(
@@ -25,6 +26,7 @@ def render_data_entry_page(
         extra_keys: 复合键字典（如 {"phase": "播前"}），用于 soil_data
         validators: 校验器 dict，key 为字段名，value 为 callable(value) -> (ok, warning_msg)
     """
+    setup_sidebar()
     st.set_page_config(page_title=title, page_icon=icon)
     st.title(f"{icon} {title}")
 
@@ -133,9 +135,9 @@ def render_data_entry_page(
     st.markdown("### 📊 已录入数据")
     df_all = get_all_records(table)
     if not df_all.empty:
-        # 隐藏冗余列
         hide_cols = [c for c in df_all.columns if c in ['id']]
-        st.dataframe(df_all.drop(columns=hide_cols, errors='ignore'),
+        df_display = rename_columns_cn(df_all.drop(columns=hide_cols, errors='ignore'))
+        st.dataframe(df_display,
                      width='stretch', hide_index=True)
     else:
         st.info(f"暂无{title}数据。")
