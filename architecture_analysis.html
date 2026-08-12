@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>纳米铁肥小麦试验记录系统 — 架构与代码分析报告</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #f5f5f5; color: #333; line-height: 1.7; padding: 20px; }
+  .container { max-width: 900px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 20px; margin: 32px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
+  h3 { font-size: 16px; margin: 20px 0 8px; }
+  .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
+  .summary { background: #f0f7ff; border-left: 4px solid #378ADD; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+  .p0 { background: #fff5f5; border-left: 4px solid #E24B4A; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .p1 { background: #fffbeb; border-left: 4px solid #EF9F27; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .p2 { background: #f0f7ff; border-left: 4px solid #378ADD; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 6px; }
+  .badge-p0 { background: #E24B4A; color: #fff; }
+  .badge-p1 { background: #EF9F27; color: #fff; }
+  .badge-p2 { background: #378ADD; color: #fff; }
+  code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #2c2c2c; color: #e0e0e0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th { background: #f0f0f0; padding: 10px 12px; text-align: left; border-bottom: 2px solid #ddd; }
+  td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+  ul { margin: 8px 0 8px 24px; }
+  li { margin: 4px 0; }
+  .good { color: #1D9E75; }
+  .bad { color: #E24B4A; }
+  .toc { background: #f9f9f9; border-radius: 8px; padding: 16px 24px; margin: 16px 0; }
+  .toc a { color: #378ADD; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .stat-card { background: #f5f5f5; border-radius: 8px; padding: 16px; text-align: center; }
+  .stat-num { font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: #888; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>纳米铁肥小麦试验记录系统 — 架构与代码分析报告</h1>
+<p class="subtitle">分析日期：2026-08-11 | 代码量：约 1,100 行 Python | 技术栈：Streamlit + SQLite + Pandas</p>
+
+<div class="summary">
+<strong>总体评价：</strong>项目功能完整，覆盖了小麦试验从小区管理到数据导出的全流程，UI 设计合理，代码风格清晰。
+但在架构分层、数据安全、代码健壮性方面存在明显不足，存在 <span class="bad">4 个 P0 级问题</span>需立即修复，
+11 个 P1 级问题建议尽快处理。
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-num" style="color:#E24B4A">4</div><div class="stat-label">P0 严重问题</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#EF9F27">11</div><div class="stat-label">P1 中等问题</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#378ADD">8</div><div class="stat-label">P2 改进建议</div></div>
+  <div class="stat-card"><div class="stat-num">23</div><div class="stat-label">问题总计</div></div>
+</div>
+
+<div class="toc">
+<strong>目录</strong>
+<ul>
+  <li><a href="#s1">一、项目概览</a></li>
+  <li><a href="#s2">二、P0 严重问题（需立即修复）</a></li>
+  <li><a href="#s3">三、P1 中等问题（建议尽快修复）</a></li>
+  <li><a href="#s4">四、P2 改进建议（长期优化）</a></li>
+  <li><a href="#s5">五、架构改进方案</a></li>
+  <li><a href="#s6">六、优先级行动计划</a></li>
+</ul>
+</div>
+
+<h2 id="s1">一、项目概览</h2>
+
+<h3>技术栈</h3>
+<table>
+  <tr><th>层</th><th>技术</th><th>文件</th></tr>
+  <tr><td>前端 UI</td><td>Streamlit 多页面应用</td><td>app.py + pages/ (9 个页面)</td></tr>
+  <tr><td>表单渲染</td><td>自定义通用渲染器</td><td>form_helper.py</td></tr>
+  <tr><td>数据访问</td><td>SQLite + 原生 sqlite3</td><td>database.py</td></tr>
+  <tr><td>常量/工具</td><td>纯 Python 常量</td><td>utils.py</td></tr>
+  <tr><td>数据导出</td><td>openpyxl + Pandas</td><td>database.py (export_to_excel)</td></tr>
+  <tr><td>图表</td><td>Streamlit 内置 + Plotly (已声明但未使用)</td><td>pages/09_export.py</td></tr>
+</table>
+
+<h3>做得好的地方</h3>
+<ul>
+  <li class="good">SQL 注入防护：使用表名白名单 <code>_TABLE_WHITELIST</code>，参数化查询</li>
+  <li class="good">数据库连接管理：<code>get_conn()</code> 上下文管理器保证异常回滚和连接关闭</li>
+  <li class="good">通用表单渲染器 <code>form_helper.py</code> 减少了重复代码</li>
+  <li class="good">产量页面有自动计算理论产量 + 千粒重差异校验</li>
+  <li class="good">出苗率自动计算 + 超出播种粒数校验</li>
+  <li class="good">重置数据有二次文字确认保护</li>
+  <li class="good">Excel 导出使用内存 BytesIO，不写磁盘残留</li>
+  <li class="good">外键约束 + ON DELETE CASCADE 设置正确</li>
+</ul>
+
+<h2 id="s2">二、P0 严重问题（需立即修复）</h2>
+
+<div class="p0">
+<p><span class="badge badge-p0">P0-1</span><strong>upsert_record() INSERT 分支列拼接 Bug</strong></p>
+<p>位置：<code>database.py</code> 第 220 行</p>
+<pre><code># 当前代码（有 Bug）
+all_cols = (["plot_id"] + list(extra_keys.keys()) if extra_keys else ["plot_id"]) + list(data_dict.keys())
+# 当 extra_keys 存在时，运算优先级导致：
+# (["plot_id"] + list(extra_keys.keys())) + list(data_dict.keys())  ← 正确
+# 当 extra_keys 为 None 时：
+# (["plot_id"]) + list(data_dict.keys())  ← 也正确
+# 但如果 extra_keys 是空 dict {} (falsy)，则走 else 分支，丢失 extra_keys 列</code></pre>
+<p><strong>风险：</strong>当 <code>extra_keys={}</code> 传入时，复合键列丢失，INSERT 缺少 <code>phase</code> 列导致报错或数据不一致。</p>
+<p><strong>修复：</strong>加括号明确优先级：<code>all_cols = ["plot_id"] + (list(extra_keys.keys()) if extra_keys else []) + list(data_dict.keys())</code></p>
+</div>
+
+<div class="p0">
+<p><span class="badge badge-p0">P0-2</span><strong>01_plots.py 直接执行 DELETE 绕过白名单</strong></p>
+<p>位置：<code>pages/01_plots.py</code> 第 75-79 行</p>
+<pre><code>with get_conn() as conn:
+    tables = ["operation_log", "quality_data", "yield_data", ...]
+    for t in tables:
+        conn.execute(f"DELETE FROM {t}")  # 直接 f-string，未走 _check_table()</code></pre>
+<p><strong>风险：</strong>虽然表名列表是硬编码的，但这破坏了 <code>_check_table()</code> 的安全防线，形成了不一致的安全实践。如果后续有人复制此模式，可能引入注入风险。</p>
+<p><strong>修复：</strong>在 <code>database.py</code> 中提供 <code>reset_all_data()</code> 函数，内部使用白名单校验，页面只调用该函数。</p>
+</div>
+
+<div class="p0">
+<p><span class="badge badge-p0">P0-3</span><strong>backup_db() 覆盖式备份 — 只保留一个备份</strong></p>
+<p>位置：<code>database.py</code> 第 408-412 行</p>
+<pre><code>def backup_db():
+    bak_path = DB_PATH + ".bak"  # 固定文件名，每次覆盖
+    shutil.copy2(DB_PATH, bak_path)
+    return bak_path</code></pre>
+<p><strong>风险：</strong>每次备份都覆盖上一次的 <code>.bak</code> 文件。如果用户连续操作后发现数据错误，只能回退到最近一次备份，之前的备份全部丢失。对于科研数据这是致命的。</p>
+<p><strong>修复：</strong>备份文件名加时间戳：<code>bak_path = DB_PATH + f".{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"</code>，并保留最近 N 个备份。</p>
+</div>
+
+<div class="p0">
+<p><span class="badge badge-p0">P0-4</span><strong>utils.py fe_total 类型不一致 — str 与 float 混用</strong></p>
+<p>位置：<code>utils.py</code> 第 8-13 行</p>
+<pre><code>TREATMENTS = [
+    {"code": "CK",     "fe_total": 0},           # int
+    {"code": "FS",     "fe_total": "2.0 kg/亩"},  # str ← 不一致！
+    {"code": "NF-0.5", "fe_total": 0.5},          # float
+    ...
+]</code></pre>
+<p><strong>风险：</strong><code>get_nf_plot_dose()</code> 中用 <code>isinstance(total, (int, float))</code> 判断，FS 处理返回 0 而非正确值。虽然 FS 不是纳米铁处理不影响主逻辑，但类型不一致是隐患，容易在后续扩展时引发 Bug。</p>
+<p><strong>修复：</strong>统一为 <code>"fe_total": 2.0</code>（float），单位单独放 <code>"fe_unit": "kg/亩"</code> 字段。</p>
+</div>
+
+<h2 id="s3">三、P1 中等问题（建议尽快修复）</h2>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-1</span><strong>无异常处理 — 数据库操作裸奔</strong></p>
+<p><code>upsert_record()</code>、<code>add_operation()</code> 等函数没有 try/except，数据库锁定、磁盘满等异常会直接抛到 Streamlit 页面，用户看到的是 Streamlit 的红色错误栈，而非友好的错误提示。</p>
+<p><strong>建议：</strong>在 Service 层统一捕获 <code>sqlite3.Error</code>，返回 <code>(success: bool, message: str)</code> 元组，页面层根据结果展示 <code>st.success()</code> 或 <code>st.error()</code>。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-2</span><strong>get_treatment_table_matrix() 仍是 N+1 查询</strong></p>
+<p>注释写着"修复 N+1 连接风暴"，但实际仍然是循环 6 个处理 × 7 个表 = 42 次查询，加上 soil_data 的查询共 48 次。虽然比逐小区查询好，但仍可优化。</p>
+<p><strong>建议：</strong>使用一条 SQL 完成全部统计：</p>
+<pre><code>SELECT p.treatment,
+       COUNT(DISTINCT CASE WHEN t.plot_id IS NOT NULL THEN t.plot_id END) as cnt
+FROM plots p
+LEFT JOIN soil_data t ON p.id = t.plot_id
+GROUP BY p.treatment</code></pre>
+<p>对每个表做一次 LEFT JOIN 统计，总共 7 条 SQL 即可（从 48 降至 7）。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-3</span><strong>无 Service 层 — 业务逻辑散落在页面中</strong></p>
+<p>产量计算逻辑在 <code>06_yield.py</code>、出苗率计算在 <code>03_phenology.py</code>、纳米铁用量计算在 <code>08_operations.py</code>。这些逻辑无法被复用、无法被测试，如果需要在导出页面展示计算结果就得复制一遍。</p>
+<p><strong>建议：</strong>抽取 <code>services/</code> 目录，按领域拆分 Service 模块。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-4</span><strong>form_helper 未被所有页面使用 — 代码重复</strong></p>
+<p><code>02_soil.py</code>、<code>03_phenology.py</code>、<code>06_yield.py</code> 手写了表单逻辑，与 <code>form_helper.render_data_entry_page()</code> 高度重复。这些页面有特殊逻辑（复合键、Tab、自动计算），但可以扩展 form_helper 支持这些场景。</p>
+<p><strong>建议：</strong>form_helper 增加 <code>on_submit</code> 回调参数，让页面可以注入自定义计算/校验逻辑。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-5</span><strong>无数据校验规则集中管理</strong></p>
+<p>每个页面的校验逻辑都是临时写的（出苗数 > 播种粒数、千粒重差异 > 5%），没有统一的校验规则定义。校验器 <code>validators</code> 参数在 form_helper 中定义了但实际从未使用。</p>
+<p><strong>建议：</strong>创建 <code>validation.py</code>，定义各字段的校验规则（范围、逻辑关系），form_helper 自动应用。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-6</span><strong>无配置文件 — 路径和常量硬编码</strong></p>
+<p><code>DB_PATH</code> 硬编码为脚本同目录，<code>PLOT_RATIO = 0.03</code> 硬编码，小区面积 <code>20.0</code> 硬编码在 DDL 中。如果试验方案变更（小区面积改变、处理数增减），需要改多处代码。</p>
+<p><strong>建议：</strong>创建 <code>config.py</code>，集中管理所有可配置参数，支持环境变量覆盖。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-7</span><strong>无数据库迁移机制</strong></p>
+<p><code>init_db()</code> 使用 <code>CREATE TABLE IF NOT EXISTS</code>，如果表结构需要变更（新增列、修改约束），无法自动迁移。现有数据会阻止修改。</p>
+<p><strong>建议：</strong>引入简单的版本号迁移机制：在 DB 中建 <code>schema_version</code> 表，每次启动检查版本号，依次执行迁移脚本。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-8</span><strong>无日志记录 — 操作不可追溯</strong></p>
+<p>系统有"操作日志"功能记录试验操作，但程序自身的运行日志（谁在什么时候保存了什么数据、是否出错）完全没有记录。如果数据出现异常，无法追溯。</p>
+<p><strong>建议：</strong>使用 Python <code>logging</code> 模块，在 Service 层记录关键操作（save/update/delete）和异常。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-9</span><strong>无数据分页 — 大数据量时性能问题</strong></p>
+<p><code>get_all_records()</code> 和 <code>get_operations()</code> 一次返回全部数据。目前数据量小（18 小区），但如果扩展到更多试验或多年度数据，页面会变慢。</p>
+<p><strong>建议：</strong>在查询函数中增加 <code>limit/offset</code> 参数，页面使用 <code>st.dataframe</code> 的虚拟滚动。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-10</span><strong>Plotly 已声明但未使用</strong></p>
+<p><code>requirements.txt</code> 中声明了 <code>plotly>=5.0</code>，但 <code>09_export.py</code> 中全部使用 Streamlit 内置 <code>st.bar_chart</code>，Plotly 从未被导入。要么移除依赖，要么用 Plotly 替换以获得更丰富的图表（误差棒、交互式图例等）。</p>
+<p><strong>建议：</strong>科研数据可视化建议用 Plotly，支持误差棒（标准差）、多图叠加等科研常用图表。</p>
+</div>
+
+<div class="p1">
+<p><span class="badge badge-p1">P1-11</span><strong>get_completion_stats() 中 f-string 拼接表名</strong></p>
+<p>位置：<code>database.py</code> 第 322 行</p>
+<pre><code>cnt = conn.execute(f"SELECT COUNT(DISTINCT plot_id) FROM {tbl}").fetchone()[0]</code></pre>
+<p>虽然 <code>tbl</code> 来自硬编码列表 <code>tables_1to1</code>，实际安全，但与 <code>_check_table()</code> 的安全实践不一致，容易误导后续开发者。</p>
+<p><strong>建议：</strong>在循环内调用 <code>_check_table(tbl)</code>，保持安全实践一致性。</p>
+</div>
+
+<h2 id="s4">四、P2 改进建议（长期优化）</h2>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-1</span><strong>无单元测试</strong></p>
+<p>项目完全没有测试。产量计算、出苗率计算、upsert 逻辑等核心业务逻辑应该有测试覆盖。建议使用 <code>pytest</code> + <code>pytest-streamlit</code> 或直接测试 Service 层函数。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-2</span><strong>无类型提示（部分函数）</strong></p>
+<p><code>database.py</code> 中 <code>init_db()</code>、<code>init_plots()</code>、<code>get_all_plots()</code>、<code>add_operation()</code> 等函数缺少类型提示。<code>form_helper.py</code> 做得好，有完整类型标注。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-3</span><strong>无 CSV 导出选项</strong></p>
+<p>目前只支持 Excel 导出。科研人员常需要 CSV 格式导入 SPSS、R 等统计软件。建议增加 CSV 导出。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-4</span><strong>图表分析功能薄弱</strong></p>
+<p>当前只有产量、籽粒铁、SPAD 三种柱状图。建议增加：处理间差异显著性分析（ANOVA）、处理 × 区组交互图、物候期时间轴、多指标相关性矩阵等科研常用图表。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-5</span><strong>无数据导入功能</strong></p>
+<p>如果用户在田间用其他工具（Excel、手机备忘录）记录了数据，无法批量导入系统。建议增加 Excel/CSV 导入功能。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-6</span><strong>无用户认证</strong></p>
+<p>如果部署在局域网内多人使用，所有人都能修改数据，无法区分操作人。建议增加简单的密码认证或 Streamlit Authenticator。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-7</span><strong>无数据审计追踪</strong></p>
+<p>科研数据要求可追溯。当前 upsert 操作直接覆盖旧值，无法知道数据何时被修改、修改前是什么值。建议增加数据变更历史表。</p>
+</div>
+
+<div class="p2">
+<p><span class="badge badge-p2">P2-8</span><strong>__pycache__ 提交到项目目录</strong></p>
+<p><code>__pycache__</code> 目录和 <code>.pyc</code> 文件不应出现在项目根目录。建议添加 <code>.gitignore</code>。</p>
+</div>
+
+<h2 id="s5">五、架构改进方案</h2>
+
+<h3>建议的目录结构</h3>
+<pre><code>wheat-fe/
+├── app.py                    # 入口 & 仪表盘
+├── config.py                 # 新增：集中配置
+├── requirements.txt
+├── .gitignore                # 新增
+├── database/
+│   ├── __init__.py
+│   ├── connection.py         # get_conn() + 连接池
+│   ├── models.py             # 表定义 + 迁移
+│   ├── repositories.py       # Repository 模式 CRUD
+│   └── migrations/           # 新增：版本化迁移脚本
+├── services/                 # 新增：业务逻辑层
+│   ├── __init__.py
+│   ├── soil_service.py
+│   ├── phenology_service.py
+│   ├── yield_service.py
+│   ├── quality_service.py
+│   ├── operation_service.py
+│   ├── stats_service.py
+│   └── export_service.py
+├── validation/               # 新增：校验规则
+│   ├── __init__.py
+│   └── rules.py
+├── form_helper.py            # 扩展：支持回调和校验
+├── utils.py                  # 精简：只保留纯工具函数
+├── pages/
+│   ├── 01_plots.py
+│   ├── 02_soil.py
+│   └── ...
+└── tests/                    # 新增：单元测试
+    ├── test_repositories.py
+    ├── test_services.py
+    └── test_validation.py</code></pre>
+
+<h3>分层职责</h3>
+<table>
+  <tr><th>层</th><th>职责</th><th>不应做的事</th></tr>
+  <tr><td>UI (pages/)</td><td>渲染表单、展示数据、用户交互</td><td>直接调用 database.py、写业务逻辑</td></tr>
+  <tr><td>Service</td><td>业务校验、自动计算、事务编排</td><td>渲染 UI、直接操作 sqlite3</td></tr>
+  <tr><td>Repository</td><td>CRUD、SQL 查询、数据映射</td><td>业务校验、计算</td></tr>
+  <tr><td>Config</td><td>路径、常量、环境变量</td><td>业务逻辑</td></tr>
+</table>
+
+<h2 id="s6">六、优先级行动计划</h2>
+
+<h3>第一阶段：紧急修复（1-2 天）</h3>
+<ol>
+  <li><strong>P0-1</strong> 修复 upsert_record() 列拼接 Bug</li>
+  <li><strong>P0-3</strong> backup_db() 改为带时间戳的备份</li>
+  <li><strong>P0-4</strong> 统一 utils.py fe_total 类型</li>
+  <li><strong>P0-2</strong> 01_plots.py 重置逻辑移入 database.py</li>
+  <li>添加 <code>.gitignore</code>，排除 <code>__pycache__</code>、<code>.db</code>、<code>.bak</code></li>
+</ol>
+
+<h3>第二阶段：架构改进（3-5 天）</h3>
+<ol>
+  <li><strong>P1-6</strong> 创建 config.py，集中管理配置</li>
+  <li><strong>P1-3</strong> 创建 services/ 层，抽取业务逻辑</li>
+  <li><strong>P1-5</strong> 创建 validation.py，集中校验规则</li>
+  <li><strong>P1-1</strong> Service 层增加异常处理</li>
+  <li><strong>P1-8</strong> 增加 logging 日志记录</li>
+  <li><strong>P1-7</strong> 实现简单的数据库迁移机制</li>
+</ol>
+
+<h3>第三阶段：质量提升（5-7 天）</h3>
+<ol>
+  <li><strong>P2-1</strong> 编写核心逻辑的单元测试</li>
+  <li><strong>P1-2</strong> 优化 get_treatment_table_matrix() 查询</li>
+  <li><strong>P1-10</strong> 用 Plotly 替换内置图表</li>
+  <li><strong>P2-4</strong> 增加科研统计图表（ANOVA、误差棒）</li>
+  <li><strong>P2-5</strong> 增加数据导入功能</li>
+</ol>
+
+<div class="summary" style="margin-top: 32px;">
+<strong>总结：</strong>项目作为一个科研数据记录工具，功能完整、设计合理，已经能满足当前试验需求。
+核心改进方向是<strong>引入 Service 层实现三层分离</strong>、<strong>修复 4 个 P0 Bug</strong>、
+<strong>增加异常处理和日志</strong>。这些改进不会改变现有功能，但能显著提升系统的健壮性和可维护性，
+为后续扩展（多年试验、多用户协作）打下基础。
+</div>
+
+</div>
+</body>
+</html>
