@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "wheat_fe"
     
     # JWT 配置
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production-please-use-openssl-random-hex-32"
+    JWT_SECRET_KEY: str | None = None
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_DAYS: int = 7
     
@@ -33,6 +33,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# 安全提示：生产环境必须通过环境变量或 .env 文件设置 `JWT_SECRET_KEY`
+if not settings.JWT_SECRET_KEY:
+    import warnings
+    warnings.warn(
+        "JWT_SECRET_KEY 未设置；请在生产环境通过环境变量或 .env 配置该值以确保安全。",
+        UserWarning,
+    )
 
 # PostgreSQL 连接 URL（SQLAlchemy asyncpg 驱动）
 DATABASE_URL = (

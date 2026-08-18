@@ -47,12 +47,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+import os
+
+# CORS origins 可以通过环境变量 `MOBILE_API_CORS_ORIGINS` 配置，逗号分隔。
+cors_env = os.getenv("MOBILE_API_CORS_ORIGINS", "")
+if cors_env:
+    allow_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+else:
+    allow_origins = ["*"]
+    if os.getenv("ENV", "development") == "production":
+        import warnings
+        warnings.warn("生产环境中未配置 MOBILE_API_CORS_ORIGINS，当前允许所有来源（'*'），请设置以限制来源。")
+
 app.add_middleware(
     CORSMiddleware,
-    # 安全修复：开发阶段允许所有本地网络来源（实际部署时应限制为具体IP）
-    # 生产环境建议改为具体来源，如 ["http://192.168.1.100:8501"]
-    allow_origins=["*"],
-    allow_credentials=False,  # 与通配符配合时必须为 False
+    allow_origins=allow_origins,
+    allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
