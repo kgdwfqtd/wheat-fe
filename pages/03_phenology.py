@@ -3,15 +3,29 @@
 
 import streamlit as st
 from datetime import date
-from database import upsert_record, get_record, get_all_records, get_all_plots
+from wheat_app.repositories.experiment_repository import get_all_plots, get_record, get_all_records, upsert_record
+from wheat_app.services.phenology_service import (
+    load_plot_options,
+    load_phenology_record,
+    save_phenology_record,
+    load_emergence_record,
+    save_emergence_record,
+    load_phenology_table,
+    load_emergence_table,
+)
 from utils import setup_sidebar, rename_columns_cn
 
-st.set_page_config(page_title="物候期 & 出苗", page_icon="📅")
+st.set_page_config(page_title="物候期 & 出苗", page_icon="📅", layout="wide")
 setup_sidebar()
 st.title("📅 物候期 & 出苗调查")
 
 plots_df = get_all_plots()
-plot_options = plots_df["plot_code"].tolist()
+base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
+if not base_options:
+    base_options = ["000000000000"]
+selected_base = st.selectbox("选择试验基地", options=base_options, key="base_selector")
+filtered_plots_df = plots_df[plots_df["base_code"] == selected_base]
+plot_options = filtered_plots_df["plot_code"].tolist()
 
 tab1, tab2 = st.tabs(["🌿 物候期", "🌱 出苗调查"])
 
@@ -20,13 +34,13 @@ tab1, tab2 = st.tabs(["🌿 物候期", "🌱 出苗调查"])
 # ============================================================
 with tab1:
     selected_plot = st.selectbox("选择小区", options=plot_options, key="pheno_plot")
-    plot_info = plots_df[plots_df["plot_code"] == selected_plot]
+    plot_info = filtered_plots_df[filtered_plots_df["plot_code"] == selected_plot]
     if not plot_info.empty:
         plot_id = int(plot_info.iloc[0]["id"])
-        existing = get_record("phenology", plot_id)
+        existing = load_phenology_record(plot_id)
 
         with st.form("pheno_form"):
-            st.caption(f"当前小区：{selected_plot}")
+            st.caption(f"当前基地：{selected_base} | 当前小区：{selected_plot}")
 
             stages = [
                 ("sowing", "播种"), ("emergence", "出苗"), ("tillering", "分蘖"),
@@ -55,8 +69,8 @@ with tab1:
                     if d:
                         data[key] = d.strftime("%Y-%m-%d")
                 if data:
-                    upsert_record("phenology", plot_id, data)
-                    st.success(f"✅ {selected_plot} 物候期已保存！")
+                    save_phenology_record(plot_id, data, base_code=selected_base)
+                    st.toast(f"✅ {selected_plot} 物候期已保存！", icon="✅")
                     st.rerun()
                 else:
                     st.error("请至少填写一个日期。")
@@ -66,13 +80,13 @@ with tab1:
 # ============================================================
 with tab2:
     selected_plot2 = st.selectbox("选择小区", options=plot_options, key="emerg_plot")
-    plot_info2 = plots_df[plots_df["plot_code"] == selected_plot2]
+    plot_info2 = filtered_plots_df[filtered_plots_df["plot_code"] == selected_plot2]
     if not plot_info2.empty:
         plot_id2 = int(plot_info2.iloc[0]["id"])
-        existing2 = get_record("emergence", plot_id2)
+        existing2 = load_emergence_record(plot_id2)
 
         with st.form("emerg_form"):
-            st.caption(f"当前小区：{selected_plot2}")
+            st.caption(f"当前基地：{selected_base} | 当前小区：{selected_plot2}")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -113,8 +127,8 @@ with tab2:
                     data["basic_seedlings"] = bs
                 data = {k: v for k, v in data.items() if v is not None}
                 if data:
-                    upsert_record("emergence", plot_id2, data)
-                    st.success(f"✅ {selected_plot2} 出苗数据已保存！")
+                    save_emergence_record(plot_id2, data, base_code=selected_base)
+                    st.toast(f"✅ {selected_plot2} 出苗数据已保存！", icon="✅")
                     st.rerun()
                 else:
                     st.error("请至少填写一项数据。")
@@ -123,8 +137,8 @@ with tab2:
 # 已录入数据汇总
 # ============================================================
 st.markdown("---")
-pheno_df = get_all_records("phenology")
-emerg_df = get_all_records("emergence")
+pheno_df = load_phenology_table()
+emerg_df = load_emergence_table()
 
 col_a, col_b = st.columns(2)
 with col_a:

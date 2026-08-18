@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """常量定义 & 工具函数"""
 
+import io
+import base64
+
+import qrcode
+
 # ============================================================
 # 处理定义 — fe_total 统一为 float，单位另存
 # ============================================================
@@ -69,6 +74,26 @@ def make_plot_code(block, treatment):
     return f"{block}-{treatment}"
 
 
+def generate_qr_code(plot_code, base_url, api_base=None, box_size=10, border=4):
+    """生成二维码，返回 (png_bytes, base64_string, qr_url)
+    api_base: 后端 API 地址，手机端扫码后使用
+    """
+    qr_url = f"{base_url}/mobile_entry?plot={plot_code}"
+    if api_base:
+        # URL encode the api_base parameter
+        from urllib.parse import urlencode
+        qr_url += f"&{urlencode({'api': api_base})}"
+    qr = qrcode.QRCode(version=1, box_size=box_size, border=border)
+    qr.add_data(qr_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+    img_b64 = base64.b64encode(png_bytes).decode()
+    return png_bytes, img_b64, qr_url
+
+
 def setup_sidebar():
     """渲染自定义中文侧边栏导航（默认英文导航已由 config.toml 禁用）"""
     import streamlit as st
@@ -93,6 +118,10 @@ def setup_sidebar():
     st.sidebar.caption("📊 数据管理")
     st.sidebar.page_link("pages/08_operations.py", label="操作日志", icon="📝")
     st.sidebar.page_link("pages/09_export.py", label="数据导出 & 图表", icon="📥")
+
+    st.sidebar.markdown("---")
+    st.sidebar.caption("📱 移动端")
+    st.sidebar.page_link("pages/10_qrcode.py", label="二维码生成", icon="📱")
 
 
 # ============================================================

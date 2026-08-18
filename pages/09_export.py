@@ -5,13 +5,23 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import date
-from database import export_to_excel, get_all_records, get_completion_stats, backup_db
+from wheat_app.repositories.experiment_repository import (
+    get_all_records,
+    get_completion_stats,
+    export_to_excel,
+    backup_db,
+    get_all_bases,
+)
 from utils import setup_sidebar, rename_columns_cn
 
-st.set_page_config(page_title="数据导出 & 图表", page_icon="📥")
+st.set_page_config(page_title="数据导出 & 图表", page_icon="📥", layout="wide")
 setup_sidebar()
 
 st.title("📥 数据导出 & 图表分析")
+
+bases_df = get_all_bases()
+base_options = ["全部"] + bases_df["base_code"].tolist() if not bases_df.empty else ["全部"]
+selected_base = st.selectbox("选择基地筛选", options=base_options, index=0)
 
 # ============================================================
 # Tab 1: 数据预览 & 导出
@@ -30,6 +40,8 @@ with tab1:
                                    format_func=lambda x: table_options[x])
 
     df_preview = get_all_records(selected_table)
+    if selected_base != "全部" and "base_code" in df_preview.columns:
+        df_preview = df_preview[df_preview["base_code"] == selected_base].copy()
     if df_preview is not None and not df_preview.empty:
         id_cols = [c for c in df_preview.columns if c == 'id' or c == 'plot_id']
         df_display = rename_columns_cn(df_preview.drop(columns=[c for c in id_cols if c in df_preview.columns], errors='ignore'))
@@ -47,15 +59,16 @@ with tab1:
     if st.button("📥 导出全部数据为 Excel", type="primary", width='stretch'):
         # 用内存字节流，不写磁盘残留
         buf = io.BytesIO()
-        export_to_excel(buf)
+        export_to_excel(buf, base_code=None if selected_base == "全部" else selected_base)
         buf.seek(0)
         # 同时自动备份
         bak = backup_db()
-        st.success(f"✅ 数据已导出（备份：{bak}）")
+        target_name = default_name if selected_base == "全部" else f"纳米铁肥小麦试验数据_{selected_base}_{today}.xlsx"
+        st.success(f"✅ 数据已导出（基地：{selected_base if selected_base != '全部' else '全部'}，备份：{bak}）")
         st.download_button(
             label="⬇️ 下载 Excel 文件",
             data=buf,
-            file_name=default_name,
+            file_name=target_name,
             mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet",
             width='stretch',
         )
@@ -98,6 +111,8 @@ with tab2:
     st.markdown("### 📊 图表分析")
 
     yield_df = get_all_records("yield_data")
+    if selected_base != "全部" and "base_code" in yield_df.columns:
+        yield_df = yield_df[yield_df["base_code"] == selected_base].copy()
     if not yield_df.empty and 'actual_yield' in yield_df.columns:
         st.markdown("#### 🌾 各小区实际产量对比")
         chart_data = yield_df[['plot_code', 'actual_yield']].dropna().set_index('plot_code')
@@ -113,6 +128,8 @@ with tab2:
         st.info("暂无产量数据可供图表分析。")
 
     quality_df = get_all_records("quality_data")
+    if selected_base != "全部" and "base_code" in quality_df.columns:
+        quality_df = quality_df[quality_df["base_code"] == selected_base].copy()
     if not quality_df.empty and 'grain_fe' in quality_df.columns:
         st.markdown("#### 🔩 各小区籽粒铁含量对比")
         fe_chart = quality_df[['plot_code', 'grain_fe']].dropna().set_index('plot_code')
@@ -121,6 +138,8 @@ with tab2:
         st.info("暂无品质数据可供图表分析。")
 
     physio_df = get_all_records("physiological")
+    if selected_base != "全部" and "base_code" in physio_df.columns:
+        physio_df = physio_df[physio_df["base_code"] == selected_base].copy()
     if not physio_df.empty and 'spad_heading' in physio_df.columns:
         st.markdown("#### 🍃 抽穗期 SPAD 值对比")
         spad_chart = physio_df[['plot_code', 'spad_heading']].dropna().set_index('plot_code')

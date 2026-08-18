@@ -4,18 +4,29 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, time as dtime
-from database import add_operation, get_operations, get_all_plots
+from wheat_app.repositories.experiment_repository import get_all_plots
+from wheat_app.services.operations_service import (
+    load_plot_options,
+    save_operation_record,
+    load_operation_history,
+)
 from utils import (
     BLOCKS, TREATMENT_CODES, TREATMENT_NAMES, OP_TYPES,
     WEATHER_OPTIONS, NF_SPLIT, get_nf_plot_dose, setup_sidebar, rename_columns_cn
 )
 
-st.set_page_config(page_title="操作日志", page_icon="📝")
+st.set_page_config(page_title="操作日志", page_icon="📝", layout="wide")
 setup_sidebar()
 
 st.title("📝 操作日志")
 
 plots_df = get_all_plots()
+base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
+if not base_options:
+    base_options = ["000000000000"]
+selected_base = st.selectbox("选择试验基地", options=base_options, key="operation_base")
+filtered_plots_df = plots_df[plots_df["base_code"] == selected_base]
+plot_options = filtered_plots_df["plot_code"].tolist()
 
 # ============================================================
 # 新增操作记录
@@ -29,6 +40,7 @@ with st.form("op_form", clear_on_submit=True):
         op_date = st.date_input("日期 *", value=date.today())
         op_time = st.time_input("时间", value=None, step=60)  # 改用 time_input
         op_type = st.selectbox("操作类型 *", options=OP_TYPES)
+        st.caption(f"当前基地：{selected_base}")
 
     with col2:
         op_block = st.selectbox("区组", options=[""] + BLOCKS)
@@ -64,7 +76,7 @@ with st.form("op_form", clear_on_submit=True):
             st.error("操作类型为必填项！")
         else:
             time_str = op_time.strftime("%H:%M") if op_time else ""
-            add_operation(
+            save_operation_record(
                 date=op_date.strftime("%Y-%m-%d"),
                 time=time_str,
                 op_type=op_type,
@@ -76,8 +88,9 @@ with st.form("op_form", clear_on_submit=True):
                 humidity=op_humidity,
                 operator=op_operator or "",
                 remarks=op_remarks or "",
+                base_code=selected_base,
             )
-            st.success("操作记录已保存！")
+            st.toast("操作记录已保存！", icon="✅")
             st.rerun()
 
 # ============================================================
@@ -92,7 +105,7 @@ with col_b:
 with col_a:
     pass
 
-ops_df = get_operations(limit=limit)
+ops_df = load_operation_history(limit=limit, base_code=selected_base)
 if not ops_df.empty:
     st.dataframe(rename_columns_cn(ops_df), width='stretch', hide_index=True)
 else:

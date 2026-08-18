@@ -2,29 +2,40 @@
 """产量数据 — 带自动计算 + 千粒重差异提示"""
 
 import streamlit as st
-from database import upsert_record, get_record, get_all_records, get_all_plots
+from wheat_app.repositories.experiment_repository import get_all_plots
+from wheat_app.services.yield_service import (
+    load_yield_records,
+    load_plot_options,
+    load_yield_record,
+    save_yield_record,
+)
 from form_helper import render_data_entry_page
 from utils import setup_sidebar, rename_columns_cn
 
 # 产量页面有自动计算逻辑，不完全使用通用渲染器
 
-st.set_page_config(page_title="产量数据", page_icon="🌾")
+st.set_page_config(page_title="产量数据", page_icon="🌾", layout="wide")
 setup_sidebar()
 st.title("🌾 产量及构成因素")
 
 plots_df = get_all_plots()
-plot_options = plots_df["plot_code"].tolist()
+base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
+if not base_options:
+    base_options = ["000000000000"]
+selected_base = st.selectbox("选择试验基地", options=base_options)
+filtered_plots_df = plots_df[plots_df["base_code"] == selected_base]
+plot_options = filtered_plots_df["plot_code"].tolist()
 
 st.markdown("### 📝 录入 / 编辑")
 selected_plot = st.selectbox("选择小区", options=plot_options)
 
-plot_info = plots_df[plots_df["plot_code"] == selected_plot]
+plot_info = filtered_plots_df[filtered_plots_df["plot_code"] == selected_plot]
 if not plot_info.empty:
     plot_id = int(plot_info.iloc[0]["id"])
-    existing = get_record("yield_data", plot_id)
+    existing = load_yield_record(plot_id)
 
     with st.form("yield_form"):
-        st.caption(f"当前小区：{selected_plot}")
+        st.caption(f"当前基地：{selected_base} | 当前小区：{selected_plot}")
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -53,8 +64,8 @@ if not plot_info.empty:
             tgw_vals = [v for v in [tgw1, tgw2] if v]
             if tgw_vals:
                 tgw_avg = sum(tgw_vals) / len(tgw_vals)
-                thy = round(spikes * grains * tgw_avg / 1000, 1)
-                st.info(f"📊 理论产量 = {spikes} × {grains} × {tgw_avg} / 1000 = **{thy} kg/亩**")
+                thy = round(spikes * grains * tgw_avg / 100, 1)
+                st.info(f"📊 理论产量 = {spikes} × {grains} × {tgw_avg} / 100 = **{thy} kg/亩**")
 
         # 千粒重差异校验
         if tgw1 and tgw2 and (tgw1 + tgw2) > 0:
@@ -78,11 +89,11 @@ if not plot_info.empty:
             if spikes and grains:
                 tgv = [v for v in [tgw1, tgw2] if v]
                 if tgv:
-                    data["theoretical_yield"] = round(spikes * grains * (sum(tgv) / len(tgv)) / 1000, 1)
+                    data["theoretical_yield"] = round(spikes * grains * (sum(tgv) / len(tgv)) / 100, 1)
             if data:
-                upsert_record("yield_data", plot_id, data)
-                st.success(f"✅ {selected_plot} 产量数据已保存！")
-                st.rerun()
+                if save_yield_record(plot_id, data, base_code=selected_base):
+                    st.toast(f"✅ {selected_plot} 产量数据已保存！", icon="✅")
+                    st.rerun()
             else:
                 st.error("请至少填写一项数据。")
 
@@ -91,7 +102,7 @@ if not plot_info.empty:
 # ============================================================
 st.markdown("---")
 st.markdown("### 📊 已录入数据")
-yield_df = get_all_records("yield_data")
+yield_df = load_yield_records()
 if not yield_df.empty:
     display_cols = [c for c in yield_df.columns if c not in ['id', 'plot_id']]
     st.dataframe(rename_columns_cn(yield_df[display_cols]), width='stretch', hide_index=True)

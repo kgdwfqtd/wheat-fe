@@ -2,7 +2,7 @@
 """通用表单渲染器 — 各数据录入页共享"""
 
 import streamlit as st
-from database import upsert_record, get_record, get_all_records, get_all_plots
+from wheat_app.repositories.experiment_repository import get_all_plots, get_record, get_all_records, upsert_record
 from utils import setup_sidebar, rename_columns_cn
 
 
@@ -26,11 +26,16 @@ def render_data_entry_page(
         extra_keys: 复合键字典（如 {"phase": "播前"}），用于 soil_data
         validators: 校验器 dict，key 为字段名，value 为 callable(value) -> (ok, warning_msg)
     """
+    # 修复：st.set_page_config 必须是第一个 Streamlit 命令
+    st.set_page_config(page_title=title, page_icon=icon, layout="wide")
     setup_sidebar()
-    st.set_page_config(page_title=title, page_icon=icon)
     st.title(f"{icon} {title}")
 
     plots_df = get_all_plots()
+    base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
+    base_options = base_options if base_options else ["000000000000"]
+    selected_base = st.selectbox("选择试验基地", options=base_options)
+    plots_df = plots_df[plots_df["base_code"] == selected_base]
     plot_options = plots_df["plot_code"].tolist()
 
     # ---- 小区选择 ----
@@ -55,11 +60,12 @@ def render_data_entry_page(
         return
 
     plot_id = int(plot_info.iloc[0]["id"])
+    selected_base_code = plot_info.iloc[0].get("base_code", selected_base)
     existing = get_record(table, plot_id, extra_keys=extra_vals if extra_vals else None)
 
     # ---- 表单 ----
     with st.form(f"{table}_form"):
-        st.caption(f"当前小区：{selected_plot}")
+        st.caption(f"当前基地：{selected_base_code} | 当前小区：{selected_plot}")
 
         # 按 group 分组渲染字段
         grouped = {}
@@ -124,8 +130,9 @@ def render_data_entry_page(
                 for w in warnings:
                     st.warning(w)
             if data:
+                data["base_code"] = selected_base_code
                 upsert_record(table, plot_id, data, extra_keys=extra_vals if extra_vals else None)
-                st.success(f"✅ {selected_plot} 数据已保存！")
+                st.toast(f"✅ {selected_plot} 数据已保存！", icon="✅")
                 st.rerun()
             elif not warnings:
                 st.error("请至少填写一项数据。")

@@ -19,7 +19,10 @@ class YieldCalcResult:
 
 
 def calculate_theoretical_yield(spikes_per_mu, grains_per_spike, tgw1=None, tgw2=None):
-    """计算理论产量 (kg/亩) = 亩穗数 × 穗粒数 × 平均千粒重 / 1000"""
+    """计算理论产量 (kg/亩) = 亩穗数 × 穗粒数 × 平均千粒重 / 100
+    
+    农学标准公式：亩穗数(万) × 穗粒数 × 千粒重(g) / 100 = kg/亩
+    """
     if not spikes_per_mu or not grains_per_spike:
         return None
 
@@ -28,7 +31,7 @@ def calculate_theoretical_yield(spikes_per_mu, grains_per_spike, tgw1=None, tgw2
         return None
 
     avg_tgw = sum(tgw_vals) / len(tgw_vals)
-    return round(spikes_per_mu * grains_per_spike * avg_tgw / 1000, 1)
+    return round(spikes_per_mu * grains_per_spike * avg_tgw / 100, 1)
 
 
 def check_tgw_diff(tgw1, tgw2, warn_threshold=5.0):

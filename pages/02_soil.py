@@ -2,35 +2,48 @@
 """土壤基础数据录入 — 使用 upsert_record 复合键"""
 
 import streamlit as st
-from database import upsert_record, get_record, get_all_records, get_all_plots
+from wheat_app.repositories.experiment_repository import get_all_plots
+from wheat_app.services.soil_service import (
+    load_soil_records,
+    load_plot_options,
+    load_soil_record,
+    save_soil_record,
+)
 from utils import setup_sidebar, rename_columns_cn
 
-st.set_page_config(page_title="土壤数据", page_icon="🪣")
+st.set_page_config(page_title="土壤数据", page_icon="🪣", layout="wide")
 setup_sidebar()
 
 st.title("🪣 土壤基础数据")
 
 plots_df = get_all_plots()
-plot_options = plots_df["plot_code"].tolist()
+base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
+if not base_options:
+    base_options = ["000000000000"]
+selected_base = st.selectbox("选择试验基地", options=base_options)
+filtered_plots_df = plots_df[plots_df["base_code"] == selected_base]
+plot_options = filtered_plots_df["plot_code"].tolist()
 
 # ============================================================
 # 数据录入
 # ============================================================
 st.markdown("### 📝 录入 / 编辑")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     selected_plot = st.selectbox("选择小区", options=plot_options)
 with col2:
     phase = st.selectbox("测定阶段", options=["播前", "收获后"])
+with col3:
+    st.caption(f"当前基地：{selected_base}")
 
-plot_info = plots_df[plots_df["plot_code"] == selected_plot]
+plot_info = filtered_plots_df[filtered_plots_df["plot_code"] == selected_plot]
 if not plot_info.empty:
     plot_id = int(plot_info.iloc[0]["id"])
-    existing = get_record("soil_data", plot_id, extra_keys={"phase": phase})
+    existing = load_soil_record(plot_id, phase)
 
     with st.form("soil_form"):
-        st.caption(f"当前小区：{selected_plot} | 阶段：{phase}")
+        st.caption(f"当前基地：{selected_base} | 当前小区：{selected_plot} | 阶段：{phase}")
 
         sub1, sub2, sub3 = st.columns(3)
         with sub1:
@@ -68,9 +81,9 @@ if not plot_info.empty:
                 if val is not None:
                     data[key] = val
             if data:
-                upsert_record("soil_data", plot_id, data, extra_keys={"phase": phase})
-                st.success(f"✅ {selected_plot} {phase} 数据已保存！")
-                st.rerun()
+                if save_soil_record(plot_id, phase, data, base_code=selected_base):
+                    st.toast(f"✅ {selected_plot} {phase} 数据已保存！", icon="✅")
+                    st.rerun()
             else:
                 st.error("请至少填写一项数据。")
 
@@ -80,7 +93,7 @@ if not plot_info.empty:
 st.markdown("---")
 st.markdown("### 📊 已录入数据")
 
-soil_df = get_all_records("soil_data")
+soil_df = load_soil_records()
 if not soil_df.empty:
     display_cols = [c for c in soil_df.columns if c not in ['id']]
     st.dataframe(rename_columns_cn(soil_df[display_cols]), width='stretch', hide_index=True)

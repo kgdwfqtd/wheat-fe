@@ -1,0 +1,2689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>纳米铁肥小麦试验记录系统</title>
+<script src="https://unpkg.com/vue@3.4.21/dist/vue.global.js"></script>
+<!-- Leaflet Map Library（使用国内稳定的 jsDelivr CDN，失败时自动回退到 unpkg） -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // 加载回退：如果 jsDelivr 失败，尝试 unpkg
+  if (typeof L === 'undefined') {
+    document.write('<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />');
+    document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+  }
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; }
+  #app { min-height: 100vh; }
+  .layout-container { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 220px;
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 20px 0;
+    flex-shrink: 0;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+  }
+  .sidebar .logo { padding: 0 20px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; }
+  .sidebar .logo h1 { font-size: 16px; color: #ecf0f1; font-weight: 600; }
+  .sidebar .logo p { font-size: 12px; color: #95a5a6; margin-top: 4px; }
+  .nav-menu { margin-top: 10px; }
+  .nav-item {
+    padding: 11px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+    border: none;
+    background: transparent;
+    color: #bdc3c7;
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+    border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: #34495e; color: #ecf0f1; }
+  .nav-item.active { background: #34495e; color: #3498db; border-left-color: #3498db; font-weight: 500; }
+  .nav-item svg { width: 18px; height: 18px; }
+  .nav-section { padding: 15px 20px 5px; font-size: 11px; text-transform: uppercase; opacity: 0.6; }
+  .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+  .page-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #3498db; }
+  .page-header h2 { color: #2c3e50; font-weight: 600; font-size: 24px; }
+  .page-header p { color: #7f8c8d; font-size: 14px; }
+  .card { 
+    background: white; 
+    border-radius: 8px; 
+    padding: 20px; 
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border: 1px solid #ecf0f1;
+  }
+  .card + .card { margin-top: 16px; }
+  .card h3 { color: #2c3e50; font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+  .card h4 { color: #34495e; font-size: 14px; font-weight: 600; }
+  .form-row { display: flex; gap: 16px; margin-bottom: 16px; }
+  .form-row > div { flex: 1; }
+  .form-row label { color: #34495e; font-weight: 500; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    text-align: center;
+    border: 1px solid #ecf0f1;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+  }
+  .stat-card .stat-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+  .stat-card .value { font-size: 32px; font-weight: bold; color: #2c3e50; }
+  .stat-card .label { font-size: 13px; color: #7f8c8d; margin-top: 8px; }
+  .stat-card .progress { margin-top: 12px; height: 6px; background: #ecf0f1; border-radius: 3px; overflow: hidden; }
+  .stat-card .progress-fill { height: 100%; transition: width 0.3s; }
+  
+  /* 不同类型卡片的颜色主题 */
+  .stat-card-blue { background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); }
+  .stat-card-blue::before { background: #2196f3; }
+  .stat-card-blue .value { color: #1565c0; }
+  .stat-card-blue .label { color: #1976d2; }
+  .stat-card-blue .progress-fill { background: #2196f3; }
+  
+  .stat-card-green { background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); }
+  .stat-card-green::before { background: #4caf50; }
+  .stat-card-green .value { color: #2e7d32; }
+  .stat-card-green .label { color: #388e3c; }
+  .stat-card-green .progress-fill { background: #4caf50; }
+  
+  .stat-card-orange { background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); }
+  .stat-card-orange::before { background: #ff9800; }
+  .stat-card-orange .value { color: #ef6c00; }
+  .stat-card-orange .label { color: #f57c00; }
+  .stat-card-orange .progress-fill { background: #ff9800; }
+  
+  .stat-card-purple { background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); }
+  .stat-card-purple::before { background: #9c27b0; }
+  .stat-card-purple .value { color: #7b1fa2; }
+  .stat-card-purple .label { color: #8e24aa; }
+  .stat-card-purple .progress-fill { background: #9c27b0; }
+  
+  .stat-card-teal { background: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%); }
+  .stat-card-teal::before { background: #009688; }
+  .stat-card-teal .value { color: #00695c; }
+  .stat-card-teal .label { color: #00796b; }
+  .stat-card-teal .progress-fill { background: #009688; }
+  
+  .stat-card-rose { background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); }
+  .stat-card-rose::before { background: #e91e63; }
+  .stat-card-rose .value { color: #c2185b; }
+  .stat-card-rose .label { color: #d81b60; }
+  .stat-card-rose .progress-fill { background: #e91e63; }
+  
+  .stat-card-indigo { background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%); }
+  .stat-card-indigo::before { background: #3f51b5; }
+  .stat-card-indigo .value { color: #303f9f; }
+  .stat-card-indigo .label { color: #3949ab; }
+  .stat-card-indigo .progress-fill { background: #3f51b5; }
+  
+  .stat-card-amber { background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); }
+  .stat-card-amber::before { background: #ffc107; }
+  .stat-card-amber .value { color: #ff8f00; }
+  .stat-card-amber .label { color: #ffa000; }
+  .stat-card-amber .progress-fill { background: #ffc107; }
+  
+  /* 表格样式 */
+  table { font-size: 14px; }
+  table thead tr { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+  table thead th { color: white; font-weight: 600; }
+  table tbody tr:nth-child(odd) { background: #f8f9fa; }
+  table tbody tr:hover { background: #e3f2fd; }
+  
+  input[type="text"], input[type="number"], input[type="date"], select {
+    border: 1px solid #bdc3c7;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: #2c3e50;
+    background: white;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus, select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+  }
+  button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  button:hover { opacity: 0.9; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button[style*="background:#1a73e8"], button[style*="background: #1a73e8"] {
+    background: #3498db !important;
+    color: white;
+  }
+  button[style*="background:#4caf50"], button[style*="background: #4caf50"] {
+    background: #27ae60 !important;
+    color: white;
+  }
+  .table-toolbar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+  .qr-code { text-align: center; padding: 16px; }
+  .qr-code img { max-width: 150px; }
+  .qr-code p { font-size: 12px; margin-top: 8px; color: #666; }
+  .block-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+  .plot-cell {
+    padding: 12px 8px;
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #dcdfe6;
+    background: white;
+  }
+  .plot-cell:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+  .plot-cell.selected { outline: 2px solid #3498db; outline-offset: 2px; }
+  .plot-cell .code { font-weight: 600; font-size: 13px; color: #2c3e50; }
+  .plot-cell .name { font-size: 11px; color: #7f8c8d; margin-top: 2px; }
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    background: #f8f9fa;
+    color: #2c3e50;
+    font-weight: 600;
+    padding: 12px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+    font-size: 13px;
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #ebeef5;
+    color: #2c3e50;
+    font-size: 13px;
+  }
+  tr:hover td { background: #f8f9fa; }
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .modal-content {
+    background: white; border-radius: 12px; padding: 24px; min-width: 480px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .modal-header h3 { color: #1a73e8; }
+  .modal-close { cursor: pointer; font-size: 20px; border: none; background: none; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .tag-success { background: #e8f5e9; color: #2e7d32; }
+  .tag-warning { background: #fff3e0; color: #f57c00; }
+  .tag-info { background: #e3f2fd; color: #1565c0; }
+  .loading { text-align: center; padding: 40px; color: #666; }
+  .empty { text-align: center; padding: 40px; color: #999; }
+  .tabs { display: flex; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px; }
+  .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+  .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+  .block-section { margin-bottom: 24px; }
+  .block-section h4 { margin-bottom: 12px; color: #555; }
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; padding: 10px 0; }
+    .sidebar .logo, .nav-item span:last-child, .nav-section { display: none; }
+    .nav-item { justify-content: center; padding: 12px; }
+    .nav-item.active { border-left: none; border-bottom: 3px solid #ffd700; }
+    .form-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="layout-container">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="logo">
+        <h1>🌾 小麦试验系统</h1>
+        <p>纳米铁肥记录</p>
+      </div>
+      <div class="nav-menu">
+        <div class="nav-section">导航</div>
+        <button class="nav-item" :class="{active: currentPage === 'dashboard'}" @click="currentPage = 'dashboard'">
+          <span>📊</span><span>仪表盘</span>
+        </button>
+        
+        <div class="nav-section">基础管理</div>
+        <button class="nav-item" :class="{active: currentPage === 'bases'}" @click="currentPage = 'bases'">
+          <span>🏢</span><span>试验基地</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'plots'}" @click="currentPage = 'plots'">
+          <span>📋</span><span>小区管理</span>
+        </button>
+        
+        <div class="nav-section">数据录入</div>
+        <button class="nav-item" :class="{active: currentPage === 'soil'}" @click="currentPage = 'soil'">
+          <span>🪣</span><span>土壤数据</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'phenology'}" @click="currentPage = 'phenology'">
+          <span>📅</span><span>物候期</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'emergence'}" @click="currentPage = 'emergence'">
+          <span>🌱</span><span>出苗调查</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'agronomic'}" @click="currentPage = 'agronomic'">
+          <span>🌿</span><span>农艺性状</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'physiological'}" @click="currentPage = 'physiological'">
+          <span>🔬</span><span>生理指标</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'yield'}" @click="currentPage = 'yield'">
+          <span>🌾</span><span>产量数据</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'quality'}" @click="currentPage = 'quality'">
+          <span>🏆</span><span>品质数据</span>
+        </button>
+
+        <div class="nav-section">试验管理</div>
+        <button class="nav-item" :class="{active: currentPage === 'fertilization'}" @click="currentPage = 'fertilization'">
+          <span>💧</span><span>铁肥施用</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'field_mgmt'}" @click="currentPage = 'field_mgmt'">
+          <span>🚜</span><span>田间管理</span>
+        </button>
+
+        <div class="nav-section">数据管理</div>
+        <button class="nav-item" :class="{active: currentPage === 'operations'}" @click="currentPage = 'operations'">
+          <span>📝</span><span>操作日志</span>
+        </button>
+        <button class="nav-item" :class="{active: currentPage === 'export'}" @click="currentPage = 'export'">
+          <span>📥</span><span>数据导出</span>
+        </button>
+      </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Dashboard -->
+      <div v-if="currentPage === 'dashboard'">
+        <div class="page-header">
+          <h2>📊 数据概览</h2>
+          <p style="color:#666;margin-top:4px;">试验数据录入进度与完成情况</p>
+        </div>
+        
+        <div class="card" v-if="dashboardData">
+          <div class="stats-grid">
+            <div class="stat-card stat-card-blue">
+              <div class="stat-icon">🌾</div>
+              <div class="value">{{ dashboardData.total_plots ?? 0 }}</div>
+              <div class="label">小区总数</div>
+            </div>
+            <div class="stat-card stat-card-purple">
+              <div class="stat-icon">🏢</div>
+              <div class="value">{{ dashboardData.base_count ?? 0 }}</div>
+              <div class="label">基地总数</div>
+            </div>
+            <div class="stat-card stat-card-green" v-for="(stat, key, idx) in dashboardData.stats" :key="key" :class="getStatCardClass(key)">
+              <div class="stat-icon">{{ getStatIcon(key) }}</div>
+              <div class="value">{{ stat.filled || 0 }}</div>
+              <div class="label">{{ tableNames[key] || key }}</div>
+              <div class="progress"><div class="progress-fill" :style="{width: (stat.pct || 0) + '%'}"></div></div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card" v-if="dashboardData">
+          <h3 style="margin-bottom:16px;">📋 各处理 × 数据表 完成情况</h3>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f5f7fa;">
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">处理</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">名称</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">土壤</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">物候</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">出苗</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">农艺</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">生理</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">产量</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">品质</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="treatment in treatmentCodes" :key="treatment.code">
+                <td style="padding:10px;border-bottom:1px solid #eee;font-weight:bold;">{{ treatment.code }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ treatment.name }}</td>
+                <td v-for="tbl in ['soil_data','phenology','emergence','agronomic_traits','physiological','yield_data','quality_data']" :key="tbl" style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                  <span class="tag" :class="getTagClass(dashboardData.treatment_matrix[treatment.code]?.[tbl])">
+                    {{ dashboardData.treatment_matrix[treatment.code]?.[tbl] || '—' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="card" v-if="dashboardData && dashboardData.recent_operations?.length">
+          <h3 style="margin-bottom:16px;">📝 最近操作</h3>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f5f7fa;">
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">日期</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">操作类型</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">处理</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">操作人</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="op in dashboardData.recent_operations" :key="op.id">
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.date }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.op_type }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.treatment }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.operator }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;color:#666;">{{ op.remarks || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Bases Management -->
+      <div v-if="currentPage === 'bases'">
+        <div class="page-header">
+          <h2>🏢 试验基地管理</h2>
+          <p style="color:#666;margin-top:4px;">管理所有试验基地信息</p>
+        </div>
+        
+        <div class="card">
+          <div class="table-toolbar">
+            <button @click="showBaseModal()" style="padding:8px 16px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">
+              ➕ 新增基地
+            </button>
+            <div style="flex:1;"></div>
+            <div style="display:flex;gap:4px;">
+              <button @click="baseViewMode = 'list'; if (mapInstance) { mapInstance.remove(); mapInstance = null; }" :style="baseViewMode === 'list' ? viewBtnActiveStyle : viewBtnStyle">
+                📋 列表视图
+              </button>
+              <button @click="switchToMapView()" :style="baseViewMode === 'map' ? viewBtnActiveStyle : viewBtnStyle">
+                🗺️ 地图视图
+              </button>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div v-if="baseViewMode === 'list'">
+            <div v-if="!bases.length" class="empty">暂无基地数据，请点击"新增基地"添加</div>
+            <table v-else style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f5f7fa;">
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">基地编号</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">基地名称</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">行政区代码</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">地址</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">纬度</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">经度</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">备注</th>
+                  <th style="padding:12px;text-align:left;border-bottom:1px solid #ddd;">创建时间</th>
+                  <th style="padding:12px;text-align:center;border-bottom:1px solid #ddd;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="base in bases" :key="base.base_code">
+                  <td style="padding:12px;border-bottom:1px solid #eee;font-family:monospace;">{{ base.base_code }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;">
+                    <a href="#" @click.prevent="viewBaseDetail(base)" style="color:#3498db;font-weight:bold;text-decoration:none;cursor:pointer;">{{ base.base_name }}</a>
+                  </td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;">{{ base.admin_code }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;color:#666;">{{ base.address || '—' }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;">{{ base.latitude != null ? base.latitude.toFixed(4) : '—' }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;">{{ base.longitude != null ? base.longitude.toFixed(4) : '—' }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;color:#666;">{{ base.remarks || '—' }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;color:#666;">{{ formatDate(base.created_at) }}</td>
+                  <td style="padding:12px;border-bottom:1px solid #eee;text-align:center;">
+                    <button @click="editBase(base)" style="margin-right:8px;padding:4px 10px;border:1px solid #1a73e8;background:white;color:#1a73e8;border-radius:4px;cursor:pointer;">编辑</button>
+                    <button @click="deleteBase(base)" style="padding:4px 10px;border:1px solid #d32f2f;background:white;color:#d32f2f;border-radius:4px;cursor:pointer;">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 地图视图 -->
+          <div v-show="baseViewMode === 'map'">
+            <div id="baseMap" style="height:500px;border-radius:8px;margin-bottom:16px;"></div>
+            <div v-if="basesWithCoords.length" style="margin-top:16px;">
+              <h4 style="margin-bottom:12px;color:#2c3e50;">📍 有坐标的基地 ({{ basesWithCoords.length }})</h4>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#f5f7fa;">
+                    <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">基地名称</th>
+                    <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">地址</th>
+                    <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">经纬度</th>
+                    <th style="padding:10px;border-bottom:1px solid #ddd;text-align:center;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="base in basesWithCoords" :key="base.base_code" style="cursor:pointer;" @click="focusBaseOnMap(base)">
+                    <td style="padding:10px;border-bottom:1px solid #eee;font-weight:500;">{{ base.base_name }}</td>
+                    <td style="padding:10px;border-bottom:1px solid #eee;color:#666;">{{ base.address || '—' }}</td>
+                    <td style="padding:10px;border-bottom:1px solid #eee;font-family:monospace;font-size:12px;">
+                      {{ base.latitude?.toFixed(4) }}, {{ base.longitude?.toFixed(4) }}
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
+                      <button @click.stop="focusBaseOnMap(base)" style="padding:4px 10px;border:1px solid #3498db;background:white;color:#3498db;border-radius:4px;cursor:pointer;">聚焦</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else style="text-align:center;padding:40px;color:#999;">暂无设置坐标的基地</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Plots Management -->
+        <div v-if="currentPage === 'plots'">
+          <div class="page-header">
+            <h2>📋 小区管理</h2>
+            <p style="color:#666;margin-top:4px;">管理各基地下的小区布局</p>
+          </div>
+
+          <div class="card">
+            <div class="table-toolbar">
+              <select v-model="selectedBaseFilter" @change="onBaseFilterChange()" style="padding:8px;border:1px solid #bdc3c7;border-radius:6px;background:white;">
+                <option value="">全部基地</option>
+                <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+              </select>
+              <button @click="showPlotModal()" style="padding:8px 16px;background:#3498db;color:white;border:none;border-radius:6px;cursor:pointer;">
+                ➕ 新增小区
+              </button>
+              <button @click="showInitModal()" style="padding:8px 16px;background:#27ae60;color:white;border:none;border-radius:6px;cursor:pointer;">
+                🔄 初始化小区
+              </button>
+            </div>
+
+            <!-- Base Details Panel -->
+            <div v-if="baseDetails" style="background:linear-gradient(135deg,#f5f7fa 0%,#e4e8ec 100%);border-radius:12px;padding:18px;margin-bottom:20px;border:1px solid #dcdfe6;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+              <h3 style="margin:0 0 14px 0;color:#2c3e50;font-size:16px;padding-bottom:10px;border-bottom:2px solid #3498db;display:flex;align-items:center;gap:8px;">🏢 {{ baseDetails.base_name }} <span style="color:#7f8c8d;font-weight:normal;font-size:13px;">- 基地概览</span></h3>
+              
+              <!-- 基本信息 -->
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px;">
+                <div style="background:linear-gradient(135deg,#e3f2fd 0%,#bbdefb 100%);padding:12px;border-radius:8px;border:1px solid #90caf9;box-shadow:0 2px 6px rgba(33,150,243,0.15);position:relative;overflow:hidden;">
+                  <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#2196f3;border-radius:8px 8px 0 0;"></div>
+                  <div style="color:#1565c0;font-size:12px;font-weight:500;">🌾 小区总数</div>
+                  <div style="font-size:26px;font-weight:bold;color:#0d47a1;margin-top:4px;">{{ baseDetails.plot_count }}</div>
+                </div>
+                <div style="background:linear-gradient(135deg,#e8f5e9 0%,#c8e6c9 100%);padding:12px;border-radius:8px;border:1px solid #81c784;box-shadow:0 2px 6px rgba(76,175,80,0.15);position:relative;overflow:hidden;">
+                  <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#4caf50;border-radius:8px 8px 0 0;"></div>
+                  <div style="color:#2e7d32;font-size:12px;font-weight:500;">📦 区组数</div>
+                  <div style="font-size:26px;font-weight:bold;color:#1b5e20;margin-top:4px;">{{ Object.keys(baseDetails.block_counts).length }}</div>
+                </div>
+                <div style="background:linear-gradient(135deg,#fff3e0 0%,#ffe0b2 100%);padding:12px;border-radius:8px;border:1px solid #ffb74d;box-shadow:0 2px 6px rgba(255,152,0,0.15);position:relative;overflow:hidden;">
+                  <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#ff9800;border-radius:8px 8px 0 0;"></div>
+                  <div style="color:#e65100;font-size:12px;font-weight:500;">🧪 处理数</div>
+                  <div style="font-size:26px;font-weight:bold;color:#bf360c;margin-top:4px;">{{ Object.keys(baseDetails.treatment_counts).length }}</div>
+                </div>
+                <div style="background:linear-gradient(135deg,#f3e5f5 0%,#e1bee7 100%);padding:12px;border-radius:8px;border:1px solid #ba68c8;box-shadow:0 2px 6px rgba(156,39,176,0.15);position:relative;overflow:hidden;">
+                  <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#9c27b0;border-radius:8px 8px 0 0;"></div>
+                  <div style="color:#6a1b9a;font-size:12px;font-weight:500;">📋 操作日志</div>
+                  <div style="font-size:26px;font-weight:bold;color:#4a148c;margin-top:4px;">{{ baseDetails.operation_count || 0 }}</div>
+                </div>
+              </div>
+              
+              <!-- 地理位置信息 -->
+              <div style="background:linear-gradient(135deg,#e0f2f1 0%,#b2dfdb 100%);padding:12px 14px;border-radius:8px;border:1px solid #4db6ac;margin-bottom:14px;box-shadow:0 2px 6px rgba(0,150,136,0.1);">
+                <div style="color:#00695c;font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px;">📍 地理位置</div>
+                <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:13px;">
+                  <span v-if="baseDetails.address" style="display:flex;align-items:center;gap:4px;color:#004d40;background:rgba(255,255,255,0.6);padding:4px 10px;border-radius:12px;">
+                    🏠 {{ baseDetails.address }}
+                  </span>
+                  <span v-if="baseDetails.latitude" style="display:flex;align-items:center;gap:4px;color:#004d40;background:rgba(255,255,255,0.6);padding:4px 10px;border-radius:12px;">
+                    📐 纬度: {{ baseDetails.latitude.toFixed(4) }}
+                  </span>
+                  <span v-if="baseDetails.longitude" style="display:flex;align-items:center;gap:4px;color:#004d40;background:rgba(255,255,255,0.6);padding:4px 10px;border-radius:12px;">
+                    📐 经度: {{ baseDetails.longitude.toFixed(4) }}
+                  </span>
+                  <span v-if="!baseDetails.address && !baseDetails.latitude" style="color:#607d8b;font-style:italic;">
+                    未设置地理位置
+                  </span>
+                </div>
+              </div>
+              
+              <!-- 天气信息 -->
+              <div v-if="weatherData" style="background:linear-gradient(180deg,#4a90e2 0%,#2c5f9e 100%);padding:14px;border-radius:10px;margin-bottom:14px;color:white;box-shadow:0 3px 10px rgba(102,126,234,0.3);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <div style="font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px;">🌤️ 实时天气</div>
+                  <button @click="refreshWeather()" style="background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;">
+                    🔄 刷新
+                  </button>
+                </div>
+                <div style="display:flex;gap:12px;">
+                  <!-- 左侧：当前天气详情 -->
+                  <div v-if="weatherData.current" style="flex:0 0 auto;width:250px;background:rgba(255,255,255,0.12);border-radius:10px;padding:12px;">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                      <div style="font-size:48px;line-height:1;">
+                        {{ getWeatherIcon(weatherData.current.weather_code) }}
+                      </div>
+                      <div>
+                        <div style="font-size:26px;font-weight:bold;line-height:1;">
+                          {{ weatherData.current.temperature?.toFixed(1) }}°C
+                        </div>
+                        <div style="font-size:12px;opacity:0.85;margin-top:2px;">
+                          {{ weatherData.current.weather_description || '—' }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 合并：空气质量 AQI + 主要指标（减少高度，保留 PM2.5/PM10 两个核心） -->
+                    <div v-if="weatherData.current.air_quality && weatherData.current.air_quality.aqi != null"
+                         :style="{
+                           background: weatherData.current.air_quality.color || 'rgba(255,255,255,0.2)',
+                           padding:'7px 9px',borderRadius:'7px',marginBottom:'9px',
+                           color: weatherData.current.air_quality.aqi <= 100 ? '#1a1a1a' : 'white',
+                           fontSize:'11px',fontWeight:'600'
+                         }">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                        <span>🌬️ AQI <strong style="font-size:15px;">{{ weatherData.current.air_quality.aqi }}</strong></span>
+                        <span style="font-size:12px;">{{ weatherData.current.air_quality.category }}</span>
+                      </div>
+                      <div v-if="weatherData.current.air_quality.pm25 != null" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+                        <div style="background:rgba(255,255,255,0.22);padding:3px 6px;border-radius:4px;text-align:center;opacity:0.95;">
+                          <span style="opacity:0.75;font-size:10px;">PM2.5</span>
+                          <strong style="font-size:12px;margin-left:3px;">{{ weatherData.current.air_quality.pm25 }}</strong>
+                          <span style="opacity:0.5;font-size:9px;">μg</span>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.22);padding:3px 6px;border-radius:4px;text-align:center;opacity:0.95;">
+                          <span style="opacity:0.75;font-size:10px;">PM10</span>
+                          <strong style="font-size:12px;margin-left:3px;">{{ weatherData.current.air_quality.pm10 }}</strong>
+                          <span style="opacity:0.5;font-size:9px;">μg</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:11px;">
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        体感 <strong style="font-size:12px;">{{ weatherData.current.apparent_temperature?.toFixed(1) }}°</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        湿度 <strong style="font-size:12px;">{{ weatherData.current.humidity }}%</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        降水 <strong style="font-size:12px;">{{ weatherData.current.precipitation }}mm</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        风速 <strong style="font-size:12px;">{{ (weatherData.current.wind_scale && weatherData.current.wind_scale !== '') ? weatherData.current.wind_scale + '级' : (weatherData.current.wind_speed != null ? (weatherData.current.wind_speed * 3.6 / 1.609).toFixed(0) + '级' : '—') }}</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        风向 <strong style="font-size:12px;">{{ weatherData.current.wind_direction_text || '—' }}</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        气压 <strong style="font-size:12px;">{{ weatherData.current.pressure != null ? weatherData.current.pressure + 'hPa' : '—' }}</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        能见度 <strong style="font-size:12px;">{{ weatherData.current.visibility != null ? weatherData.current.visibility + 'km' : '—' }}</strong>
+                      </div>
+                      <div style="background:rgba(255,255,255,0.1);padding:5px 7px;border-radius:6px;">
+                        露点 <strong style="font-size:12px;">{{ weatherData.current.dew_point != null ? weatherData.current.dew_point?.toFixed(1) + '°' : '—' }}</strong>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 右侧：多日预报 (单一Grid布局：所有行列共享同一条列，绝对对齐) -->
+                  <div v-if="weatherData.daily && weatherData.daily.length" style="flex:1;background:rgba(255,255,255,0.06);border-radius:10px;padding:10px 12px;min-width:0;">
+                    <div style="font-size:12px;margin-bottom:4px;opacity:0.85;font-weight:500;">📅 多日预报</div>
+                    <!-- CSS Grid 统一三行 + 7列 (列数=天气天数) -->
+                    <div :style="{
+                      display:'grid',
+                      gridTemplateColumns: 'repeat(' + getWeatherTrendData(weatherData.daily).length + ', 1fr)',
+                      gridAutoRows:'auto',
+                      alignItems:'start',
+                      position:'relative'
+                    }">
+                      <!-- ========== 第一行：日期标签 (放第1行) ========== -->
+                      <div v-for="(day, idx) in getWeatherTrendData(weatherData.daily)" :key="'hd-'+idx"
+                           :style="{gridColumn: idx + 1, gridRow: 1, textAlign:'center', fontSize:'11px', opacity:0.95, paddingBottom:'2px'}">
+                        <div :style="{fontWeight:'600', fontSize: day.isToday?'12px':'11px', color: day.isToday?'#ffd54f':'inherit', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}">{{ day.dayLabel }}</div>
+                        <div style="font-size:9px;opacity:0.7;margin-top:1px;">{{ day.dateMD }}</div>
+                      </div>
+                      <!-- ========== 第二行：折线区 (放第2行) ========== -->
+                      <!-- 折线区容器：包含SVG连线和圆点。圆点占Grid的列，SVG绝对定位覆盖整个区域 -->
+                      <div :style="{
+                        gridColumn: '1 / -1',
+                        gridRow: 2,
+                        position:'relative',
+                        height:'130px',
+                        marginTop:'2px'
+                      }">
+                        <!-- 底层：SVG连线 (X=列中心百分比, Y=容器像素) -->
+                        <svg viewBox="0 0 100 130" preserveAspectRatio="none" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;">
+                          <!-- 背景网格线 -->
+                          <g opacity="0.08">
+                            <line v-for="g in 3" :key="'grid-'+g"
+                                  x1="0" x2="100"
+                                  :y1="30 + 85 * g / 3"
+                                  :y2="30 + 85 * g / 3"
+                                  stroke="white" stroke-width="0.5"/>
+                          </g>
+                          <!-- 最高温折线 -->
+                          <polyline :fill="'none'" :stroke="'rgba(255,255,255,0.85)'" :stroke-width="'1.5'"
+                                    :points="chartLinePoints(weatherData.daily, 'max')"/>
+                          <polyline v-if="chartPastLinePoints(weatherData.daily, 'max')"
+                                    :fill="'none'" :stroke="'rgba(200,210,240,0.55)'" :stroke-width="'1.2'"
+                                    stroke-dasharray="2,1.5"
+                                    :points="chartPastLinePoints(weatherData.daily, 'max')"/>
+                          <!-- 最低温折线 -->
+                          <polyline :fill="'none'" :stroke="'rgba(255,255,255,0.6)'" :stroke-width="'1.5'"
+                                    :points="chartLinePoints(weatherData.daily, 'min')"/>
+                          <polyline v-if="chartPastLinePoints(weatherData.daily, 'min')"
+                                    :fill="'none'" :stroke="'rgba(200,210,240,0.4)'" :stroke-width="'1.2'"
+                                    stroke-dasharray="2,1.5"
+                                    :points="chartPastLinePoints(weatherData.daily, 'min')"/>
+                        </svg>
+                        <!-- 顶层：圆点 + 数值。用同样的Grid列放在圆点行之上 -->
+                        <div :style="{
+                          position:'absolute',
+                          top:0,left:0,right:0,bottom:0,
+                          display:'grid',
+                          gridTemplateColumns: 'repeat(' + getWeatherTrendData(weatherData.daily).length + ', 1fr)'
+                        }">
+                          <div v-for="(day, idx) in getWeatherTrendData(weatherData.daily)" :key="'pt-'+idx"
+                               :style="{gridColumn: idx + 1, position:'relative', height:'100%'}">
+                            <!-- 最高温数值 -->
+                            <div :style="{
+                              position:'absolute',left:'50%',transform:'translateX(-50%)',
+                              top: tempPixelY(day.maxTemp, weatherData.daily) + 'px',
+                              marginTop: '-14px',
+                              fontSize: day.isToday?'12px':'11px',
+                              fontWeight: day.isToday?'bold':'600',
+                              color: day.isPast?'rgba(200,210,240,0.75)':'white',
+                              whiteSpace:'nowrap',textAlign:'center',pointerEvents:'none'
+                            }">{{ day.maxTemp }}°</div>
+                            <!-- 最高温圆点 -->
+                            <div :style="{
+                              position:'absolute',left:'50%',
+                              top: tempPixelY(day.maxTemp, weatherData.daily) + 'px',
+                              transform:'translate(-50%,-50%)',
+                              width: day.isToday?'8px':'6px',
+                              height: day.isToday?'8px':'6px',
+                              borderRadius:'50%',
+                              background: day.isPast?'rgba(200,210,240,0.7)':'white',
+                              border: (day.isToday?'2px solid #ffd54f':'1px solid #4a90e2'),
+                              pointerEvents:'none'
+                            }"></div>
+                            <!-- 最低温圆点 -->
+                            <div :style="{
+                              position:'absolute',left:'50%',
+                              top: tempPixelY(day.minTemp, weatherData.daily) + 'px',
+                              transform:'translate(-50%,-50%)',
+                              width: day.isToday?'7px':'5.5px',
+                              height: day.isToday?'7px':'5.5px',
+                              borderRadius:'50%',
+                              background: day.isPast?'rgba(200,210,240,0.55)':'rgba(255,255,255,0.9)',
+                              border: (day.isToday?'1.5px solid #ffd54f':'1px solid rgba(255,255,255,0.5)'),
+                              pointerEvents:'none'
+                            }"></div>
+                            <!-- 最低温数值 -->
+                            <div :style="{
+                              position:'absolute',left:'50%',transform:'translateX(-50%)',
+                              top: tempPixelY(day.minTemp, weatherData.daily) + 'px',
+                              marginTop: '6px',
+                              fontSize: day.isToday?'12px':'11px',
+                              fontWeight: day.isToday?'bold':'500',
+                              color: day.isPast?'rgba(200,210,240,0.65)':'rgba(255,255,255,0.9)',
+                              whiteSpace:'nowrap',textAlign:'center',pointerEvents:'none'
+                            }">{{ day.minTemp }}°</div>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- ========== 第三行：天气图标 + 描述 (放第3行) ========== -->
+                      <div v-for="(day, idx) in getWeatherTrendData(weatherData.daily)" :key="'ic-'+idx"
+                           :style="{gridColumn: idx + 1, gridRow: 3, textAlign:'center', marginTop:'2px'}">
+                        <div style="font-size:16px;line-height:1.1;">{{ getWeatherIcon(day.code) }}</div>
+                        <div style="font-size:9px;opacity:0.85;margin-top:1px;line-height:1.2;whiteSpace:'nowrap';overflow:'hidden';textOverflow:'ellipsis';">{{ day.desc }}</div>
+                        <div v-if="day.precipProb && day.precipProb > 30" style="font-size:8px;color:#ffd54f;opacity:0.9;">💧{{ day.precipProb }}%</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="weatherData.message" style="font-size:11px;opacity:0.8;margin-top:8px;">
+                  ⚠️ {{ weatherData.message }}
+                </div>
+                <div style="font-size:10px;opacity:0.5;margin-top:6px;display:flex;justify-content:space-between;">
+                  <span>数据来源：{{ weatherData.source === 'qweather' ? '和风天气(中国气象局)' : (weatherData.source === 'open-meteo' ? 'Open-Meteo' : '本地存储') }}</span>
+                  <span>预报仅作参考，请以当地气象部门发布为准</span>
+                </div>
+              </div>
+              
+              <!-- 作物数据采集情况 -->
+              <div v-if="baseDetails.crop_stats && Object.keys(baseDetails.crop_stats).length" style="background:linear-gradient(135deg,#fff8e1 0%,#ffecb3 100%);padding:12px 14px;border-radius:8px;border:1px solid #ffd54f;box-shadow:0 2px 6px rgba(255,193,7,0.15);">
+                <div style="color:#f57f17;font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px;">📊 作物数据采集情况</div>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                  <span v-for="(count, table) in baseDetails.crop_stats" :key="table" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.7);padding:5px 12px;border-radius:14px;color:#5d4037;">
+                    <span style="width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:inline-block;box-shadow:0 1px 3px rgba(0,0,0,0.1);"></span>
+                    {{ getTableName(table) }}: <strong style="color:#bf360c;">{{ count }}</strong> 条
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Block Layout View -->
+            <div v-for="block in blockNames" :key="block" class="block-section">
+              <h4>区组 {{ block }}</h4>
+              <div class="block-grid">
+                <div v-for="plot in plots.filter(p => p.block === block)"
+                     :key="plot.plot_code"
+                     class="plot-cell"
+                     :style="{background: getTreatmentColor(plot.treatment)}"
+                     :title="`基地: ${plot.base_code}\n处理: ${plot.treatment}\n面积: ${plot.area_m2}m²`"
+                     @click="showQRCode(plot)">
+                <div class="code">{{ plot.plot_code }}</div>
+                <div class="name">{{ getTreatmentName(plot.treatment) }}</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Data Table View -->
+          <details style="margin-top:20px;">
+            <summary style="cursor:pointer;color:#666;">📊 列表视图</summary>
+            <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+              <thead>
+                <tr style="background:#f5f7fa;">
+                  <th style="padding:10px;border-bottom:1px solid #ddd;">基地</th>
+                  <th style="padding:10px;border-bottom:1px solid #ddd;">小区编号</th>
+                  <th style="padding:10px;border-bottom:1px solid #ddd;">区组</th>
+                  <th style="padding:10px;border-bottom:1px solid #ddd;">处理</th>
+                  <th style="padding:10px;border-bottom:1px solid #ddd;">面积(m²)</th>
+                  <th style="padding:10px;border-bottom:1px solid #ddd;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="plot in plots" :key="plot.id">
+                  <td style="padding:10px;border-bottom:1px solid #eee;">{{ plot.base_code }}</td>
+                  <td style="padding:10px;border-bottom:1px solid #eee;font-family:monospace;">{{ plot.plot_code }}</td>
+                  <td style="padding:10px;border-bottom:1px solid #eee;">{{ plot.block }}</td>
+                  <td style="padding:10px;border-bottom:1px solid #eee;">{{ plot.treatment }}</td>
+                  <td style="padding:10px;border-bottom:1px solid #eee;">{{ plot.area_m2 }}</td>
+                  <td style="padding:10px;border-bottom:1px solid #eee;">
+                    <button @click="editPlot(plot)" style="padding:4px 10px;border:1px solid #27ae60;background:white;color:#27ae60;border-radius:4px;cursor:pointer;margin-right:4px;">编辑</button>
+                    <button @click="showQRCode(plot)" style="padding:4px 10px;border:1px solid #1a73e8;background:white;color:#1a73e8;border-radius:4px;cursor:pointer;margin-right:4px;">二维码</button>
+                    <button @click="deletePlot(plot)" style="padding:4px 10px;border:1px solid #d32f2f;background:white;color:#d32f2f;border-radius:4px;cursor:pointer;">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+        </div>
+      </div>
+      
+      <!-- Generic Data Entry Pages -->
+      <div v-if="currentPage === 'soil' || currentPage === 'phenology' || currentPage === 'emergence' || 
+                  currentPage === 'agronomic' || currentPage === 'physiological' || currentPage === 'yield' || 
+                  currentPage === 'quality'">
+        <div class="page-header">
+          <h2>{{ currentPageTitles[currentPage] }}</h2>
+          <p style="color:#666;margin-top:4px;">{{ currentPageDescriptions[currentPage] }}</p>
+        </div>
+        
+        <div class="card">
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">选择基地</label>
+              <select v-model="selectedDataBase" @change="loadDataRecords()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">全部基地</option>
+                <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">选择小区</label>
+              <select v-model="selectedPlotCode" @change="loadCurrentRecord()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">请选择小区</option>
+                <option v-for="plot in filteredPlots" :key="plot.plot_code" :value="plot.plot_code">{{ plot.plot_code }} - {{ getTreatmentName(plot.treatment) }}</option>
+              </select>
+            </div>
+            <div v-if="currentPage === 'soil'">
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">测定阶段</label>
+              <select v-model="soilPhase" @change="loadCurrentRecord()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="播前">播前</option>
+                <option value="收获后">收获后</option>
+              </select>
+            </div>
+          </div>
+          
+          <!-- Data Entry Form -->
+          <div v-if="selectedPlotCode" style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
+            <h3 style="margin-bottom:16px;">📝 录入 / 编辑</h3>
+            <div class="form-row" v-for="(group, gIdx) in currentFormFields" :key="gIdx">
+              <div v-for="(field, fIdx) in group" :key="field.key">
+                <label style="display:block;margin-bottom:4px;font-size:13px;">{{ field.label }}</label>
+                <input v-if="field.type === 'number'" type="number" :step="field.step || '0.01'" :placeholder="field.placeholder"
+                       v-model.number="formData[field.key]" :disabled="field.readonly"
+                       :style="`width:100%;padding:8px;border:1px solid ${field.readonly ? '#e0e0e0' : '#ddd'};border-radius:6px;background:${field.readonly ? '#f5f5f5' : 'white'};color:${field.readonly ? '#888' : '#333'};`" />
+                <input v-else-if="field.type === 'date'" type="date" v-model="formData[field.key]"
+                       style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+                <input v-else type="text" :placeholder="field.placeholder" v-model="formData[field.key]"
+                       style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+              </div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:12px;">
+              <button @click="saveRecord()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">💾 保存</button>
+              <button @click="loadCurrentRecord()" style="padding:10px 24px;background:#f5f5f5;color:#666;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:14px;">重置</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Data Table -->
+        <div class="card" v-if="currentRecords.length">
+          <h3 style="margin-bottom:16px;">📊 已录入数据</h3>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f5f7fa;">
+                  <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">小区</th>
+                  <th style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">处理</th>
+                  <th v-for="col in currentTableColumns" :key="col.key" style="padding:10px;border-bottom:1px solid #ddd;text-align:left;">{{ col.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="record in currentRecords" :key="record.id">
+                  <td style="padding:10px;border-bottom:1px solid #eee;font-family:monospace;">{{ record.plot_code }}</td>
+                  <td style="padding:10px;border-bottom:1px solid #eee;">{{ record.treatment }}</td>
+                  <td v-for="col in currentTableColumns" :key="col.key" style="padding:10px;border-bottom:1px solid #eee;">{{ record[col.key] ?? '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 铁肥施用记录 -->
+      <div v-if="currentPage === 'fertilization'">
+        <div class="page-header">
+          <h2>💧 铁肥施用记录</h2>
+          <p style="color:#666;margin-top:4px;">结构化记录每次铁肥施用方法，为使用方法优化提供输入变量</p>
+        </div>
+        <div class="card">
+          <div class="table-toolbar">
+            <select v-model="fertLogFilter.base_code" @change="loadFertLogs()" style="padding:8px;border:1px solid #bdc3c7;border-radius:6px;background:white;">
+              <option value="">全部基地</option>
+              <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+            </select>
+            <button @click="showFertLogModal()" style="padding:8px 16px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">
+              ➕ 新增施用记录
+            </button>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f5f7fa;">
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">施用日期</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">小区</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">生育期</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">肥料类型</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">施用方式</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">浓度</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">亩用量</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">有效铁</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">第几次</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">操作人</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="log in fertLogs" :key="log.id">
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.application_date }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;">{{ log.plot_code }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.growth_stage || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.fertilizer_type }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.application_method || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.concentration != null ? log.concentration + ' mg/L' : '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.dose_per_mu != null ? log.dose_per_mu + ' mL/亩' : '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.active_iron_amount != null ? log.active_iron_amount + ' g/亩' : '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">第{{ log.application_times }}次</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.operator || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">
+                  <button @click="showFertLogModal(log)" style="padding:3px 8px;border:1px solid #27ae60;background:white;color:#27ae60;border-radius:4px;cursor:pointer;margin-right:3px;">编辑</button>
+                  <button @click="deleteFertLog(log)" style="padding:3px 8px;border:1px solid #d32f2f;background:white;color:#d32f2f;border-radius:4px;cursor:pointer;">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!fertLogs.length">
+                <td colspan="11" style="padding:20px;text-align:center;color:#999;">暂无施用记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 田间管理记录 -->
+      <div v-if="currentPage === 'field_mgmt'">
+        <div class="page-header">
+          <h2>🚜 田间管理记录</h2>
+          <p style="color:#666;margin-top:4px;">记录灌溉、除草、植保、常规施肥等非铁肥管理操作</p>
+        </div>
+        <div class="card">
+          <div class="table-toolbar">
+            <select v-model="fieldMgmtFilter.base_code" @change="loadFieldMgmtLogs()" style="padding:8px;border:1px solid #bdc3c7;border-radius:6px;background:white;">
+              <option value="">全部基地</option>
+              <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+            </select>
+            <button @click="showFieldMgmtModal()" style="padding:8px 16px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">
+              ➕ 新增管理记录
+            </button>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f5f7fa;">
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">日期</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">小区</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">类型</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">投入物</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">用量</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">方式</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">操作人</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">备注</th>
+                <th style="padding:10px;border-bottom:2px solid #ddd;text-align:left;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="log in fieldMgmtLogs" :key="log.id">
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.management_date }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;">{{ log.plot_code || '全基地' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.management_type }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.input_name || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.input_amount != null ? log.input_amount + ' ' + (log.input_unit || '') : '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.method || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.operator || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">{{ log.remarks || '—' }}</td>
+                <td style="padding:8px;border-bottom:1px solid #eee;">
+                  <button @click="showFieldMgmtModal(log)" style="padding:3px 8px;border:1px solid #27ae60;background:white;color:#27ae60;border-radius:4px;cursor:pointer;margin-right:3px;">编辑</button>
+                  <button @click="deleteFieldMgmt(log)" style="padding:3px 8px;border:1px solid #d32f2f;background:white;color:#d32f2f;border-radius:4px;cursor:pointer;">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!fieldMgmtLogs.length">
+                <td colspan="9" style="padding:20px;text-align:center;color:#999;">暂无管理记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Operations Log -->
+      <div v-if="currentPage === 'operations'">
+        <div class="page-header">
+          <h2>📝 操作日志</h2>
+          <p style="color:#666;margin-top:4px;">记录试验操作历史</p>
+        </div>
+        
+        <div class="card">
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">选择基地</label>
+              <select v-model="operationBase" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">全部基地</option>
+                <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+              </select>
+            </div>
+          </div>
+          
+          <h3 style="margin:20px 0 16px;">➕ 新增记录</h3>
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">日期 *</label>
+              <input type="date" v-model="newOp.date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">操作类型 *</label>
+              <select v-model="newOp.op_type" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">请选择</option>
+                <option v-for="op in opTypes" :key="op" :value="op">{{ op }}</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">小区</label>
+              <select v-model="newOp.plot_code" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">请选择</option>
+                <option v-for="plot in plots" :key="plot.plot_code" :value="plot.plot_code">{{ plot.plot_code }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;">区组</label>
+              <select v-model="newOp.block" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">请选择</option>
+                <option v-for="b in blockNames" :key="b" :value="b">{{ b }}</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;">处理</label>
+              <select v-model="newOp.treatment" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">请选择</option>
+                <option v-for="t in treatmentCodes" :key="t.code" :value="t.code">{{ t.code }} - {{ t.name }}</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;">操作人</label>
+              <input type="text" v-model="newOp.operator" placeholder="操作人姓名" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;">天气</label>
+              <select v-model="newOp.weather" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">请选择</option>
+                <option v-for="w in weatherOptions" :key="w" :value="w">{{ w }}</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;">温度(℃)</label>
+              <input type="number" v-model.number="newOp.temperature" step="0.5" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;">备注</label>
+              <input type="text" v-model="newOp.remarks" placeholder="操作详情" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+            </div>
+          </div>
+          <button @click="saveOperation()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">💾 保存记录</button>
+        </div>
+        
+        <div class="card">
+          <h3 style="margin-bottom:16px;">📋 操作历史</h3>
+          <div v-if="!operations.length" class="empty">暂无操作记录</div>
+          <table v-else style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f5f7fa;">
+                <th style="padding:10px;border-bottom:1px solid #ddd;">日期</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">时间</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">操作类型</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">小区</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">处理</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">操作人</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">天气</th>
+                <th style="padding:10px;border-bottom:1px solid #ddd;">备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="op in operations" :key="op.id">
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.date }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.time || '—' }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.op_type }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ getPlotCodeById(op.plot_id) || '—' }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.treatment || '—' }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.operator || '—' }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;">{{ op.weather || '—' }}</td>
+                <td style="padding:10px;border-bottom:1px solid #eee;color:#666;">{{ op.remarks || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Export -->
+      <div v-if="currentPage === 'export'">
+        <div class="page-header">
+          <h2>📥 数据导出</h2>
+          <p style="color:#666;margin-top:4px;">导出数据到 Excel 文件</p>
+        </div>
+        
+        <div class="card">
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">选择基地</label>
+              <select v-model="exportBase" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">全部基地</option>
+                <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end;">
+              <button @click="exportExcel()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;">📊 导出 Excel</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card">
+          <h3 style="margin-bottom:16px;">📋 数据表预览</h3>
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">选择数据表</label>
+              <select v-model="exportTable" @change="loadExportData()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option v-for="(name, key) in tableNames" :key="key" :value="key">{{ name }}</option>
+              </select>
+            </div>
+          </div>
+          <div v-if="exportData.length" style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f5f7fa;">
+                  <th v-for="key in Object.keys(exportData[0] || {})" :key="key" style="padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12px;">{{ key }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in exportData.slice(0, 20)" :key="idx">
+                  <td v-for="(val, key) in row" :key="key" style="padding:6px;border-bottom:1px solid #eee;font-size:12px;">{{ val ?? '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p style="margin-top:8px;color:#666;font-size:12px;">显示前 20 条记录，共 {{ exportData.length }} 条</p>
+          </div>
+          <div v-else class="empty">暂无数据</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Modals -->
+  <div v-if="modal.show" class="modal-mask" @click.self="modal.show = false">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>{{ modal.title }}</h3>
+        <button class="modal-close" @click="modal.show = false">✕</button>
+      </div>
+      <div v-if="modal.type === 'base'">
+          <div class="form-row">
+            <div>
+              <label>基地编号 (14位)</label>
+              <input v-model="baseForm.base_code" maxlength="14" placeholder="如 51010501202608" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;" />
+            </div>
+            <div>
+              <label>基地名称</label>
+              <input v-model="baseForm.base_name" placeholder="如 南充试验基地" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label>行政区代码</label>
+              <input v-model="baseForm.admin_code" placeholder="如 510105" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;" />
+            </div>
+            <div>
+              <label>详细地址</label>
+              <input v-model="baseForm.address" placeholder="如 河南省平顶山市汝州市..." style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label>纬度</label>
+              <input type="number" v-model.number="baseForm.latitude" placeholder="如 34.1234" step="0.0001" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;" />
+            </div>
+            <div>
+              <label>经度</label>
+              <input type="number" v-model.number="baseForm.longitude" placeholder="如 113.4567" step="0.0001" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div style="grid-column: span 2;">
+              <label>备注</label>
+              <textarea v-model="baseForm.remarks" rows="2" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:6px;"></textarea>
+            </div>
+          </div>
+          <div v-if="baseForm.latitude && baseForm.longitude" style="background:#f8f9fa;padding:10px;border-radius:6px;margin-bottom:12px;font-size:12px;color:#7f8c8d;">
+            💡 设置经纬度后，系统可自动获取实时天气数据作为试验参考
+          </div>
+          <button @click="saveBase()" style="padding:10px 24px;background:#3498db;color:white;border:none;border-radius:6px;cursor:pointer;margin-top:12px;">保存</button>
+        </div>
+      
+      <div v-if="modal.type === 'plot'">
+        <div class="form-row">
+          <div>
+            <label>所属基地</label>
+            <select v-model="plotForm.base_code" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+            </select>
+          </div>
+          <div>
+            <label>区组</label>
+            <input v-model="plotForm.block" placeholder="如 I, II, III" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>处理</label>
+            <select v-model="plotForm.treatment" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option v-for="t in treatmentCodes" :key="t.code" :value="t.code">{{ t.code }} - {{ t.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label>小区编码</label>
+            <input v-model="plotForm.plot_code" placeholder="如 I-CK" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>面积(m²)</label>
+            <input type="number" v-model.number="plotForm.area_m2" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>田块名</label>
+            <input v-model="plotForm.field_name" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:10px;border-top:1px dashed #e0e0e0;font-size:13px;color:#1a73e8;font-weight:600;">🌱 播种与试验设计</div>
+        <div class="form-row">
+          <div>
+            <label>品种名称</label>
+            <input v-model="plotForm.variety" placeholder="如 郑麦9023" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>前茬作物</label>
+            <select v-model="plotForm.previous_crop" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>玉米</option><option>大豆</option><option>水稻</option>
+              <option>花生</option><option>红薯</option><option>休闲</option><option>其他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>土壤类型</label>
+            <select v-model="plotForm.soil_type" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>潮土</option><option>褐土</option><option>砂姜黑土</option>
+              <option>黄褐土</option><option>水稻土</option><option>沙壤土</option><option>其他</option>
+            </select>
+          </div>
+          <div>
+            <label>播种日期</label>
+            <input type="date" v-model="plotForm.sowing_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>播种量(kg/亩)</label>
+            <input type="number" v-model.number="plotForm.sowing_rate" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>行距(cm)</label>
+            <input type="number" v-model.number="plotForm.row_spacing" step="0.5" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>播深(cm)</label>
+            <input type="number" v-model.number="plotForm.sowing_depth" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>播种方式</label>
+            <select v-model="plotForm.sowing_method" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>机播</option><option>条播</option><option>撒播</option><option>穴播</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>小区走向</label>
+            <select v-model="plotForm.plot_orientation" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>南北</option><option>东西</option>
+            </select>
+          </div>
+          <div>
+            <label>重复数</label>
+            <input type="number" v-model.number="plotForm.replication" min="1" max="10" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>试验年份</label>
+            <input type="number" v-model.number="plotForm.experiment_year" min="2020" max="2099" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div></div>
+        </div>
+        <button @click="savePlot()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;margin-top:12px;">保存</button>
+      </div>
+      
+      <div v-if="modal.type === 'qr'">
+        <div class="qr-code">
+          <img :src="qrCodeDataUrl" v-if="qrCodeDataUrl" />
+          <p>{{ qrPlot?.plot_code }}</p>
+          <p style="font-size:11px;color:#95a5a6;">扫描二维码进入手机录入</p>
+          <a :href="qrUrl" target="_blank" style="color:#3498db;font-size:12px;">{{ qrUrl }}</a>
+        </div>
+      </div>
+      
+      <div v-if="modal.type === 'init'">
+        <p style="color:#34495e;margin-bottom:16px;">初始化指定数量的小区，系统将按区组和处理自动编号。</p>
+        <div class="form-row">
+          <div>
+            <label>所属基地</label>
+            <select v-model="initForm.base_code" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:4px;">
+              <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+            </select>
+          </div>
+          <div>
+            <label>区组数量</label>
+            <input type="number" v-model.number="initForm.blocks" min="1" max="10" value="3" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:4px;" />
+          </div>
+          <div>
+            <label>每区组处理数</label>
+            <input type="number" v-model.number="initForm.treatments" min="1" max="10" value="6" style="width:100%;padding:8px;border:1px solid #bdc3c7;border-radius:4px;" />
+          </div>
+        </div>
+        <div style="background:#f8f9fa;padding:12px;border-radius:6px;margin-bottom:16px;color:#34495e;">
+          <p>预计创建: <strong>{{ initForm.blocks * initForm.treatments }}</strong> 个小区</p>
+          <p style="font-size:12px;color:#7f8c8d;">区组: {{ 'I, II, III, IV, V, VI, VII, VIII, IX, X'.split(',').slice(0, initForm.blocks).join(', ') }}</p>
+          <p style="font-size:12px;color:#7f8c8d;">处理: {{ treatmentCodes.slice(0, initForm.treatments).map(t => t.code).join(', ') }}</p>
+        </div>
+        <button @click="doInitPlots()" style="padding:10px 24px;background:#27ae60;color:white;border:none;border-radius:4px;cursor:pointer;">
+          ✅ 确认初始化
+        </button>
+      </div>
+
+      <!-- 铁肥施用记录模态框 -->
+      <div v-if="modal.type === 'fert_log'">
+        <div class="form-row">
+          <div>
+            <label>小区 *</label>
+            <select v-model="fertLogForm.plot_code" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option v-for="plot in filteredPlots" :key="plot.plot_code" :value="plot.plot_code">{{ plot.plot_code }} - {{ getTreatmentName(plot.treatment) }}</option>
+            </select>
+          </div>
+          <div>
+            <label>施用日期 *</label>
+            <input type="date" v-model="fertLogForm.application_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>生育期</label>
+            <select v-model="fertLogForm.growth_stage" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>苗期</option><option>分蘖期</option><option>越冬期</option><option>返青期</option>
+              <option>拔节期</option><option>孕穗期</option><option>抽穗期</option><option>开花期</option>
+              <option>灌浆期</option><option>成熟期</option>
+            </select>
+          </div>
+          <div>
+            <label>肥料类型 *</label>
+            <select v-model="fertLogForm.fertilizer_type" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>纳米铁</option><option>硫酸亚铁</option><option>EDDHA铁</option><option>其他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>施用方式</label>
+            <select v-model="fertLogForm.application_method" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>叶面喷施</option><option>土壤施用</option><option>拌种</option><option>滴灌</option><option>浸种</option>
+            </select>
+          </div>
+          <div>
+            <label>施用浓度(mg/L)</label>
+            <input type="number" v-model.number="fertLogForm.concentration" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>稀释倍数</label>
+            <input type="number" v-model.number="fertLogForm.dilution_ratio" step="1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>小区用量(mL)</label>
+            <input type="number" v-model.number="fertLogForm.dose_per_plot" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>亩用量(mL/亩)</label>
+            <input type="number" v-model.number="fertLogForm.dose_per_mu" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>有效铁量(g Fe/亩)</label>
+            <input type="number" v-model.number="fertLogForm.active_iron_amount" step="0.01" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>喷液量(L/亩)</label>
+            <input type="number" v-model.number="fertLogForm.spray_volume" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>当季第几次施用</label>
+            <input type="number" v-model.number="fertLogForm.application_times" min="1" max="20" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>操作人</label>
+            <input v-model="fertLogForm.operator" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>施用时温度(℃)</label>
+            <input type="number" v-model.number="fertLogForm.weather_temp" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>施用时湿度(%)</label>
+            <input type="number" v-model.number="fertLogForm.weather_humidity" step="1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div></div>
+        </div>
+        <div style="margin-top:8px;">
+          <label>备注</label>
+          <textarea v-model="fertLogForm.remarks" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea>
+        </div>
+        <button @click="saveFertLog()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;margin-top:12px;">保存</button>
+      </div>
+
+      <!-- 田间管理记录模态框 -->
+      <div v-if="modal.type === 'field_mgmt_log'">
+        <div class="form-row">
+          <div>
+            <label>所属基地</label>
+            <select v-model="fieldMgmtForm.base_code" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+            </select>
+          </div>
+          <div>
+            <label>小区(可选,空表示全基地)</label>
+            <select v-model="fieldMgmtForm.plot_code" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 全基地 —</option>
+              <option v-for="plot in filteredPlots" :key="plot.plot_code" :value="plot.plot_code">{{ plot.plot_code }} - {{ getTreatmentName(plot.treatment) }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>管理日期 *</label>
+            <input type="date" v-model="fieldMgmtForm.management_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>管理类型 *</label>
+            <select v-model="fieldMgmtForm.management_type" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>灌溉</option><option>除草</option><option>病虫害防治</option>
+              <option>常规施肥</option><option>中耕</option><option>其他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>投入物名称</label>
+            <input v-model="fieldMgmtForm.input_name" placeholder="如 尿素/阿维菌素/水" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div>
+            <label>用量</label>
+            <input type="number" v-model.number="fieldMgmtForm.input_amount" step="0.01" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>单位</label>
+            <select v-model="fieldMgmtForm.input_unit" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">—</option>
+              <option>kg/亩</option><option>L/亩</option><option>mm</option><option>m³/亩</option><option>g/亩</option>
+            </select>
+          </div>
+          <div>
+            <label>方式</label>
+            <select v-model="fieldMgmtForm.method" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+              <option value="">— 请选择 —</option>
+              <option>撒施</option><option>喷施</option><option>浇灌</option><option>漫灌</option><option>滴灌</option><option>人工拔除</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>操作人</label>
+            <input v-model="fieldMgmtForm.operator" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+          </div>
+          <div></div>
+        </div>
+        <div style="margin-top:8px;">
+          <label>备注</label>
+          <textarea v-model="fieldMgmtForm.remarks" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea>
+        </div>
+        <button @click="saveFieldMgmt()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;margin-top:12px;">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, reactive, watch, nextTick } = Vue;
+
+const app = createApp({
+  setup() {
+    const API_BASE = '';
+    
+    // Navigation
+    const currentPage = ref('dashboard');
+    const currentPageTitles = {
+      soil: '🪣 土壤数据',
+      phenology: '📅 物候期',
+      emergence: '🌱 出苗调查',
+      agronomic: '🌿 农艺性状',
+      physiological: '🔬 生理指标',
+      yield: '🌾 产量数据',
+      quality: '🏆 品质数据'
+    };
+    const currentPageDescriptions = {
+      soil: '土壤基础理化性质测定',
+      phenology: '小麦生长发育期记录',
+      emergence: '出苗情况调查',
+      agronomic: '农艺性状测定',
+      physiological: '生理生化指标测定',
+      yield: '产量构成因素测定',
+      quality: '籽粒品质测定'
+    };
+    
+    // Data
+    const bases = ref([]);
+    const plots = ref([]);
+    const dashboardData = ref(null);
+    const operations = ref([]);
+
+    // Map view
+    const baseViewMode = ref('list');
+    const viewBtnStyle = {
+      padding: '8px 16px',
+      border: '1px solid #ddd',
+      background: 'white',
+      color: '#666',
+      cursor: 'pointer',
+      borderRadius: '6px',
+      marginRight: '8px'
+    };
+    const viewBtnActiveStyle = {
+      padding: '8px 16px',
+      border: '1px solid #3498db',
+      background: '#3498db',
+      color: 'white',
+      cursor: 'pointer',
+      borderRadius: '6px',
+      marginRight: '8px'
+    };
+    const mapInstance = ref(null);
+    const baseMarkers = ref([]);
+
+    // Filters
+      const selectedBaseFilter = ref('');
+      const baseDetails = ref(null);
+      const weatherData = ref(null);
+      const selectedDataBase = ref('');
+    const selectedPlotCode = ref('');
+    const soilPhase = ref('播前');
+    const operationBase = ref('');
+    
+    // Forms
+    const baseForm = reactive({ base_code: '', base_name: '', admin_code: '', address: '', latitude: null, longitude: null, remarks: '' });
+    const plotForm = reactive({
+      base_code: '', block: '', treatment: 'CK', plot_code: '', area_m2: 20, field_name: '',
+      variety: '', previous_crop: '', soil_type: '', sowing_date: '', sowing_rate: null,
+      row_spacing: null, sowing_depth: null, sowing_method: '', plot_orientation: '',
+      replication: null, experiment_year: null,
+    });
+    const editingPlotCode = ref(null);
+    // 铁肥施用记录
+    const fertLogs = ref([]);
+    const fertLogFilter = reactive({ base_code: '' });
+    const fertLogForm = reactive({
+      plot_code: '', application_date: '', growth_stage: '', fertilizer_type: '',
+      application_method: '', concentration: null, dilution_ratio: null,
+      dose_per_plot: null, dose_per_mu: null, active_iron_amount: null,
+      spray_volume: null, application_times: 1, operator: '',
+      weather_temp: null, weather_humidity: null, remarks: '',
+    });
+    const editingFertLogId = ref(null);
+    // 田间管理记录
+    const fieldMgmtLogs = ref([]);
+    const fieldMgmtFilter = reactive({ base_code: '' });
+    const fieldMgmtForm = reactive({
+      base_code: '', plot_code: '', management_date: '', management_type: '',
+      input_name: '', input_amount: null, input_unit: '', method: '',
+      operator: '', remarks: '',
+    });
+    const editingFieldMgmtId = ref(null);
+    const newOp = reactive({ date: '', op_type: '', plot_code: '', block: '', treatment: '', weather: '', temperature: null, operator: '', remarks: '' });
+    const initForm = reactive({ base_code: '', blocks: 3, treatments: 6 });
+    
+    // Modals
+    const modal = reactive({ show: false, type: '', title: '', editTarget: null });
+    const qrCodeDataUrl = ref('');
+    const qrPlot = ref(null);
+    const qrUrl = ref('');
+    
+    // Export
+    const exportBase = ref('');
+    const exportTable = ref('soil_data');
+    const exportData = ref([]);
+    
+    // Constants
+    const treatmentCodes = [
+      { code: 'CK', name: '空白对照', color: '#E8E8E8', fe_total: 0, fe_unit: 'g/亩' },
+      { code: 'FS', name: '硫酸亚铁对照', color: '#DAE8FC', fe_total: 2000, fe_unit: 'g/亩' },
+      { code: 'NF-0.5', name: '纳米铁半量', color: '#E1F5D5', fe_total: 0.5, fe_unit: 'g/亩' },
+      { code: 'NF-1.0', name: '纳米铁标准量', color: '#D5E8D4', fe_total: 1.0, fe_unit: 'g/亩' },
+      { code: 'NF-1.5', name: '纳米铁1.5倍量', color: '#C8E6C9', fe_total: 1.5, fe_unit: 'g/亩' },
+      { code: 'NF-2.0', name: '纳米铁2倍量', color: '#A5D6A7', fe_total: 2.0, fe_unit: 'g/亩' }
+    ];
+    const blockNames = ['I', 'II', 'III'];
+    const opTypes = ['拌种', '拔节期喷施', '灌浆期喷施', '播种', '灌溉', '施肥（基肥）', '除草', '病虫害防治', '取样', '调查/测定', '其他'];
+    const weatherOptions = ['晴', '多云', '阴', '小雨', '中雨', '大雨', '雾', '雪', '大风'];
+    const tableNames = {
+        soil_data: '土壤数据',
+        phenology: '物候期',
+        emergence: '出苗调查',
+        agronomic_traits: '农艺性状',
+        physiological: '生理指标',
+        yield_data: '产量数据',
+        quality_data: '品质数据',
+        operation_log: '操作日志',
+        fertilization_log: '铁肥施用记录',
+        field_management: '田间管理记录',
+        soil: '土壤数据',
+        phenology_data: '物候期',
+        emergence_data: '出苗调查',
+        agronomic: '农艺性状',
+        physiological_data: '生理指标'
+      };
+      
+      function getTableName(tableName) {
+        return tableNames[tableName] || tableName;
+      }
+
+      // 天气代码转图标 (Open-Meteo WMO weather interpretation codes)
+      function getWeatherIcon(code) {
+        const icons = {
+          0: '☀️',  // 晴
+          1: '🌤️', 2: '⛅', 3: '☁️',  // 多云/阴
+          45: '🌫️', 48: '🌫️',  // 雾
+          51: '🌦️', 53: '🌦️', 55: '🌧️',  // 毛毛雨
+          56: '🌧️', 57: '🌧️',  // 冻毛毛雨
+          61: '🌧️', 63: '🌧️', 65: '🌧️',  // 雨
+          66: '🌧️', 67: '🌧️',  // 冻雨
+          71: '🌨️', 73: '🌨️', 75: '🌨️',  // 雪
+          77: '❄️',  // 雪粒
+          80: '🌦️', 81: '🌧️', 82: '⛈️',  // 阵雨
+          85: '🌨️', 86: '🌨️',  // 阵雪
+          95: '⛈️',  // 雷暴
+          96: '⛈️', 99: '⛈️'  // 雷暴伴冰雹
+        };
+        return icons[code] || '🌤️';
+      }
+
+      // 获取天气趋势数据 (前3天 + 今天 + 未来7天，共11天)
+      function getWeatherTrendData(daily) {
+        if (!daily || !daily.length) return [];
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = formatLocalDate(today);
+        
+        // 确保按日期排序
+        const sorted = [...daily].sort((a, b) => 
+          new Date(a.record_date) - new Date(b.record_date)
+        );
+        
+        // 找到今天的位置，截取前3天+未来7天
+        let todayIdx = sorted.findIndex(d => d.record_date === todayStr);
+        let startIdx, endIdx;
+        if (todayIdx >= 0) {
+          startIdx = Math.max(0, todayIdx - 3);
+          endIdx = Math.min(sorted.length, todayIdx + 8);
+        } else {
+          // 如果找不到今天，就按日期顺序取前3天+未来7天或全部
+          startIdx = 0;
+          endIdx = Math.min(sorted.length, 11);
+        }
+        
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        
+        const result = sorted.slice(startIdx, endIdx).map(day => {
+          const date = new Date(day.record_date + 'T00:00:00');
+          const diffDays = Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const month = date.getMonth() + 1;
+          const d = date.getDate();
+          const weekday = weekdays[date.getDay()];
+          
+          // 日期标签：昨天/今天/明天/周一/周二...
+          let dayLabel;
+          if (diffDays === -1) dayLabel = '昨天';
+          else if (diffDays === 0) dayLabel = '今天';
+          else if (diffDays === 1) dayLabel = '明天';
+          else if (diffDays === 2) dayLabel = '后天';
+          else dayLabel = weekday;
+          
+          const precipProb = day.precipitation_probability != null ? day.precipitation_probability : null;
+          
+          return {
+            date: day.record_date,
+            dateMD: `${String(month).padStart(2,'0')}/${String(d).padStart(2,'0')}`,
+            dayLabel: dayLabel,
+            diffDays: diffDays,
+            isToday: diffDays === 0,
+            isPast: diffDays < 0,
+            maxTemp: Math.round(day.temperature_max || 0),
+            minTemp: Math.round(day.temperature_min || 0),
+            code: day.weather_code,
+            desc: day.weather_description || '',
+            precipProb: precipProb,
+            precipSum: day.precipitation_sum
+          };
+        });
+        
+        return result;
+      }
+
+      // 本地日期字符串 yyyy-mm-dd (避免UTC时区偏差)
+      function formatLocalDate(dateObj) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      // ========= 天气折线图辅助函数 (HTML圆点+SVG连线，完美对齐) =========
+      // 容器固定高度130px，绘图区在 Y=30~115 之间 (85px高度)
+      const PLOT_CONTAINER_H = 130;
+      const PLOT_TOP_PX = 30;
+      const PLOT_BOTTOM_PX = 115;
+      const PLOT_H_PX = PLOT_BOTTOM_PX - PLOT_TOP_PX; // 85
+
+      function _chartData(daily) {
+        return getWeatherTrendData(daily);
+      }
+
+      function _chartTempRange(daily) {
+        const data = _chartData(daily);
+        if (!data.length) return { max: 30, min: 10 };
+        let maxT = -Infinity, minT = Infinity;
+        data.forEach(d => {
+          if (d.maxTemp > maxT) maxT = d.maxTemp;
+          if (d.minTemp < minT) minT = d.minTemp;
+        });
+        const pad = Math.max(3, Math.round((maxT - minT) * 0.2));
+        return { max: maxT + pad, min: minT - pad };
+      }
+
+      // 温度 -> 130px容器内的绝对Y像素 (用于HTML圆点)
+      function tempPixelY(temp, daily) {
+        const range = _chartTempRange(daily);
+        const span = range.max - range.min || 1;
+        const tNorm = (temp - range.min) / span;
+        return PLOT_BOTTOM_PX - PLOT_H_PX * tNorm;
+      }
+
+      // SVG连线点: X=0~100百分比(列中心), Y=0~130和容器像素对应
+      function chartLinePoints(daily, type) {
+        const data = _chartData(daily);
+        if (!data.length) return '';
+        const n = data.length;
+        return data.map((d, idx) => {
+          const x = ((idx + 0.5) / n) * 100;
+          const temp = type === 'max' ? d.maxTemp : d.minTemp;
+          const y = tempPixelY(temp, daily);
+          return `${x.toFixed(2)},${y.toFixed(1)}`;
+        }).join(' ');
+      }
+
+      function chartPastLinePoints(daily, type) {
+        const data = _chartData(daily);
+        if (!data.length) return '';
+        const n = data.length;
+        const hasPast = data.some(d => d.isPast);
+        if (!hasPast) return '';
+        return data.map((d, idx) => {
+          if (!d.isPast) return null;
+          const x = ((idx + 0.5) / n) * 100;
+          const temp = type === 'max' ? d.maxTemp : d.minTemp;
+          const y = tempPixelY(temp, daily);
+          return `${x.toFixed(2)},${y.toFixed(1)}`;
+        }).filter(Boolean).join(' ');
+      }
+
+      // 卡片颜色映射
+      const cardColorMap = {
+        soil_data: 'stat-card-green',
+        soil: 'stat-card-green',
+        phenology: 'stat-card-orange',
+        phenology_data: 'stat-card-orange',
+        emergence: 'stat-card-teal',
+        emergence_data: 'stat-card-teal',
+        agronomic_traits: 'stat-card-indigo',
+        agronomic: 'stat-card-indigo',
+        physiological: 'stat-card-purple',
+        physiological_data: 'stat-card-purple',
+        yield_data: 'stat-card-amber',
+        quality_data: 'stat-card-rose',
+        operation_log: 'stat-card-cyan'
+      };
+      
+      // 图标映射
+      const cardIconMap = {
+        soil_data: '🪴',
+        soil: '🪴',
+        phenology: '🌸',
+        phenology_data: '🌸',
+        emergence: '🌱',
+        emergence_data: '🌱',
+        agronomic_traits: '📏',
+        agronomic: '📏',
+        physiological: '🧪',
+        physiological_data: '🧪',
+        yield_data: '🌾',
+        quality_data: '🏆',
+        operation_log: '📝'
+      };
+      
+      function getStatCardClass(key) {
+        return cardColorMap[key] || 'stat-card-blue';
+      }
+      
+      function getStatIcon(key) {
+        return cardIconMap[key] || '📊';
+      }
+    
+    // Form field definitions
+    const currentFormFields = computed(() => {
+      // 通用采样元数据（采样日期/采样人/采样方法）行 - 用于采样类表
+      const samplingMetaRow = [
+        { key: 'sampling_date', label: '采样日期', type: 'date' },
+        { key: 'sampler', label: '采样人', type: 'text' },
+        { key: 'sampling_method', label: '采样方法', type: 'text' },
+      ];
+      const fields = {
+        soil: [
+          [{ key: 'ph', label: 'pH', type: 'number', step: '0.1' }, { key: 'fe_available', label: '有效铁(mg/kg)', type: 'number', step: '0.1' }, { key: 'fe_total', label: '全铁(g/kg)', type: 'number', step: '0.1' }],
+          [{ key: 'organic_matter', label: '有机质(g/kg)', type: 'number', step: '0.1' }, { key: 'p_available', label: '有效磷(mg/kg)', type: 'number', step: '0.1' }, { key: 'k_available', label: '速效钾(mg/kg)', type: 'number', step: '0.1' }],
+          [{ key: 'cec', label: 'CEC(cmol/kg)', type: 'number', step: '0.1' }, { key: 'bulk_density', label: '容重(g/cm³)', type: 'number', step: '0.01' }],
+          samplingMetaRow,
+        ],
+        phenology: [
+          [{ key: 'sowing', label: '播种期', type: 'date' }, { key: 'emergence', label: '出苗期', type: 'date' }, { key: 'tillering', label: '分蘖期', type: 'date' }],
+          [{ key: 'overwinter', label: '越冬期', type: 'date' }, { key: 'regreening', label: '返青期', type: 'date' }, { key: 'jointing', label: '拔节期', type: 'date' }],
+          [{ key: 'heading', label: '抽穗期', type: 'date' }, { key: 'flowering', label: '开花期', type: 'date' }, { key: 'maturity', label: '成熟期', type: 'date' }]
+        ],
+        emergence: [
+          [{ key: 'seeds_sown', label: '播种粒数', type: 'number' }, { key: 'emerged_7d', label: '7天出苗数', type: 'number' }, { key: 'rate_7d', label: '7天出苗率(%) 自动算', type: 'number', step: '0.1', readonly: true }],
+          [{ key: 'emerged_14d', label: '14天出苗数', type: 'number' }, { key: 'rate_14d', label: '14天出苗率(%) 自动算', type: 'number', step: '0.1', readonly: true }, { key: 'basic_seedlings', label: '基本苗数', type: 'number', step: '0.1' }],
+          samplingMetaRow,
+        ],
+        agronomic: [
+          [{ key: 'tillers_prewinter', label: '越冬前分蘖', type: 'number', step: '0.1' }, { key: 'tillers_postregreen', label: '返青后分蘖', type: 'number', step: '0.1' }, { key: 'tillers_jointing', label: '拔节期分蘖', type: 'number', step: '0.1' }],
+          [{ key: 'plant_height', label: '株高(cm)', type: 'number', step: '0.1' }, { key: 'lai_jointing', label: '拔节期LAI', type: 'number', step: '0.1' }, { key: 'lai_heading', label: '抽穗期LAI', type: 'number', step: '0.1' }],
+          [{ key: 'dry_weight_jointing', label: '拔节期干重(g/株)', type: 'number', step: '0.1' }, { key: 'dry_weight_heading', label: '抽穗期干重(g/株)', type: 'number', step: '0.1' }, { key: 'dry_weight_maturity', label: '成熟期干重(g/株)', type: 'number', step: '0.1' }],
+          samplingMetaRow,
+        ],
+        physiological: [
+          [{ key: 'spad_jointing', label: '拔节期SPAD', type: 'number', step: '0.1' }, { key: 'spad_heading', label: '抽穗期SPAD', type: 'number', step: '0.1' }, { key: 'spad_filling', label: '灌浆期SPAD', type: 'number', step: '0.1' }],
+          [{ key: 'photo_rate_heading', label: '抽穗期光合速率', type: 'number', step: '0.01' }, { key: 'photo_rate_filling', label: '灌浆期光合速率', type: 'number', step: '0.01' }, { key: 'active_fe_jointing', label: '拔节期活性铁', type: 'number', step: '0.1' }],
+          [{ key: 'active_fe_filling', label: '灌浆期活性铁', type: 'number', step: '0.1' }, { key: 'cat', label: 'CAT活性', type: 'number', step: '0.01' }, { key: 'pod', label: 'POD活性', type: 'number', step: '0.01' }],
+          samplingMetaRow,
+        ],
+        yield: [
+          [{ key: 'spikes_per_mu', label: '亩穗数(万穗/亩)', type: 'number', step: '0.1' }, { key: 'grains_per_spike', label: '穗粒数(粒/穗)', type: 'number', step: '0.1' }, { key: 'thousand_grain_wt_1', label: '千粒重第1组(g)', type: 'number', step: '0.01' }],
+          [{ key: 'thousand_grain_wt_2', label: '千粒重第2组(g)', type: 'number', step: '0.01' }, { key: 'actual_yield', label: '实际产量(kg/亩)', type: 'number', step: '0.1' }, { key: 'harvest_index', label: '收获指数', type: 'number', step: '0.01' }],
+          [{ key: 'harvest_date', label: '收获日期', type: 'date' }, { key: 'harvest_area', label: '实收面积(m²)', type: 'number', step: '0.1' }, { key: 'moisture_content', label: '含水率(%)', type: 'number', step: '0.1' }],
+          [{ key: 'standardized_yield', label: '标准产量(13%含水率) 自动算', type: 'number', step: '0.1', readonly: true }],
+          samplingMetaRow,
+        ],
+        quality: [
+          [{ key: 'grain_protein', label: '籽粒蛋白质(%)', type: 'number', step: '0.1' }, { key: 'wet_gluten', label: '湿面筋(%)', type: 'number', step: '0.1' }, { key: 'sds_sedimentation', label: 'SDS沉降值(mL)', type: 'number', step: '0.1' }],
+          [{ key: 'grain_fe', label: '籽粒铁含量(mg/kg)', type: 'number', step: '0.1' }, { key: 'flour_fe', label: '面粉铁含量(mg/kg)', type: 'number', step: '0.1' }],
+          samplingMetaRow,
+        ]
+      };
+      return fields[currentPage.value] || [];
+    });
+    
+    const currentTableColumns = computed(() => {
+      const fieldGroups = currentFormFields.value;
+      const columns = [];
+      fieldGroups.forEach(group => {
+        group.forEach(field => {
+          columns.push({ key: field.key, label: field.label });
+        });
+      });
+      return columns;
+    });
+    
+    const currentRecords = ref([]);
+    const formData = reactive({});
+    
+    const filteredPlots = computed(() => {
+      if (!selectedDataBase.value) return plots.value;
+      return plots.value.filter(p => p.base_code === selectedDataBase.value);
+    });
+    
+    // API methods
+    async function api(method, url, data = null) {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (data) opts.body = JSON.stringify(data);
+      const res = await fetch(API_BASE + url, opts);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.message || '请求失败');
+      }
+      return res.json();
+    }
+    
+    async function loadDashboard() {
+      try {
+        const res = await api('GET', '/api/v1/dashboard');
+        dashboardData.value = res.data;
+      } catch (e) { console.error('Dashboard error:', e); }
+    }
+    
+    async function loadBases() {
+      try {
+        const res = await api('GET', '/api/v1/bases');
+        bases.value = res.data || [];
+      } catch (e) { console.error('Bases error:', e); }
+    }
+    
+    function viewBaseDetail(base) {
+      selectedBaseFilter.value = base.base_code;
+      currentPage.value = 'plots';
+      loadBaseDetails(base.base_code);
+      loadPlots();
+    }
+    
+    async function onBaseFilterChange() {
+      if (selectedBaseFilter.value) {
+        await loadBaseDetails(selectedBaseFilter.value);
+      } else {
+        baseDetails.value = null;
+      }
+      await loadPlots();
+    }
+    
+    async function loadBaseDetails(baseCode) {
+      try {
+        const res = await api('GET', `/api/v1/bases/${baseCode}/details`);
+        baseDetails.value = res.data;
+      } catch (e) {
+        console.error('Base details error:', e);
+        baseDetails.value = null;
+      }
+      // 加载天气数据
+      await loadWeather(baseCode);
+    }
+    
+    async function loadWeather(baseCode) {
+      try {
+        const res = await api('GET', `/api/v1/bases/${baseCode}/weather?days=7`);
+        weatherData.value = res.data;
+      } catch (e) {
+        console.error('Weather error:', e);
+        weatherData.value = null;
+      }
+    }
+    
+    async function refreshWeather() {
+      if (selectedBaseFilter.value) {
+        await loadWeather(selectedBaseFilter.value);
+      }
+    }
+    
+    async function loadPlots() {
+      try {
+        const url = selectedBaseFilter.value ? `/api/v1/plots?base_code=${selectedBaseFilter.value}` : '/api/v1/plots';
+        const res = await api('GET', url);
+        plots.value = res.data || [];
+      } catch (e) { console.error('Plots error:', e); }
+    }
+    
+    async function loadOperations() {
+      try {
+        const url = operationBase.value ? `/api/v1/table/operation_log?base_code=${operationBase.value}` : '/api/v1/table/operation_log';
+        const res = await api('GET', url);
+        operations.value = res.data || [];
+      } catch (e) { console.error('Operations error:', e); }
+    }
+    
+    async function loadDataRecords() {
+      if (!currentPage.value || currentPage.value === 'dashboard' || currentPage.value === 'bases' || 
+          currentPage.value === 'plots' || currentPage.value === 'operations' || currentPage.value === 'export') return;
+      try {
+        const table = currentPage.value === 'soil' ? 'soil_data' : currentPage.value;
+        const url = selectedDataBase.value ? `/api/v1/table/${table}?base_code=${selectedDataBase.value}` : `/api/v1/table/${table}`;
+        const res = await api('GET', url);
+        currentRecords.value = res.data || [];
+      } catch (e) { console.error('Data error:', e); currentRecords.value = []; }
+    }
+    
+    async function loadCurrentRecord() {
+      if (!selectedPlotCode.value) {
+        Object.keys(formData).forEach(k => delete formData[k]);
+        return;
+      }
+      try {
+        const plot = plots.value.find(p => p.plot_code === selectedPlotCode.value);
+        if (!plot) return;
+        const table = currentPage.value === 'soil' ? 'soil_data' : currentPage.value;
+        const url = table === 'soil_data' 
+          ? `/api/v1/table/${table}` 
+          : `/api/v1/table/${table}`;
+        const res = await api('GET', url);
+        const records = res.data || [];
+        let record;
+        if (table === 'soil_data') {
+          record = records.find(r => r.plot_code === selectedPlotCode.value && r.phase === soilPhase.value);
+        } else {
+          record = records.find(r => r.plot_code === selectedPlotCode.value);
+        }
+        Object.keys(formData).forEach(k => delete formData[k]);
+        if (record) {
+          currentFormFields.value.forEach(group => {
+            group.forEach(field => {
+              formData[field.key] = record[field.key] ?? null;
+            });
+          });
+        } else {
+          currentFormFields.value.forEach(group => {
+            group.forEach(field => {
+              formData[field.key] = null;
+            });
+          });
+        }
+      } catch (e) { console.error('Load record error:', e); }
+    }
+    
+    async function saveRecord() {
+      if (!selectedPlotCode.value) { alert('请先选择小区'); return; }
+      try {
+        const table = currentPage.value === 'soil' ? 'soil_data' : currentPage.value;
+        const payload = {
+          plot_code: selectedPlotCode.value,
+          data: {},
+          extra: {}
+        };
+        currentFormFields.value.forEach(group => {
+          group.forEach(field => {
+            if (formData[field.key] !== null && formData[field.key] !== undefined && formData[field.key] !== '') {
+              payload.data[field.key] = formData[field.key];
+            }
+          });
+        });
+        if (table === 'soil_data') {
+          payload.extra = { phase: soilPhase.value };
+        }
+        await api('POST', `/api/v1/table/${table}`, payload);
+        alert('✅ 保存成功！');
+        loadDataRecords();
+      } catch (e) {
+        alert('❌ 保存失败：' + e.message);
+      }
+    }
+    
+    // Base CRUD
+    function showBaseModal(base = null) {
+        modal.type = 'base';
+        modal.title = base ? '编辑基地' : '新增基地';
+        modal.editTarget = base;
+        if (base) {
+          Object.assign(baseForm, {
+            base_code: base.base_code || '',
+            base_name: base.base_name || '',
+            admin_code: base.admin_code || '',
+            address: base.address || '',
+            latitude: base.latitude || null,
+            longitude: base.longitude || null,
+            remarks: base.remarks || ''
+          });
+        } else {
+          Object.assign(baseForm, { base_code: '', base_name: '', admin_code: '', address: '', latitude: null, longitude: null, remarks: '' });
+        }
+      modal.show = true;
+    }
+    
+    async function saveBase() {
+      if (!baseForm.base_code || !baseForm.base_name) {
+        alert('请填写基地编号和名称'); return;
+      }
+      try {
+        if (modal.editTarget) {
+          await api('PUT', `/api/v1/bases/${baseForm.base_code}`, baseForm);
+        } else {
+          await api('POST', '/api/v1/bases', baseForm);
+        }
+        modal.show = false;
+        await loadBases();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+    
+    async function deleteBase(base) {
+      if (!confirm(`确定删除基地 "${base.base_name}" 及其所有小区吗？`)) return;
+      try {
+        await api('DELETE', `/api/v1/bases/${base.base_code}`);
+        await loadBases();
+        await loadPlots();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+    
+    // Plot CRUD
+    function showPlotModal() {
+      modal.type = 'plot';
+      modal.title = '新增小区';
+      editingPlotCode.value = null;
+      if (bases.value.length) {
+        Object.assign(plotForm, {
+          base_code: bases.value[0].base_code, block: '', treatment: 'CK', plot_code: '',
+          area_m2: 20, field_name: '', variety: '', previous_crop: '', soil_type: '',
+          sowing_date: '', sowing_rate: null, row_spacing: null, sowing_depth: null,
+          sowing_method: '', plot_orientation: '', replication: null, experiment_year: null,
+        });
+      }
+      modal.show = true;
+    }
+
+    function editPlot(plot) {
+      modal.type = 'plot';
+      modal.title = '编辑小区';
+      editingPlotCode.value = plot.plot_code;
+      Object.assign(plotForm, {
+        base_code: plot.base_code || '', block: plot.block || '', treatment: plot.treatment || 'CK',
+        plot_code: plot.plot_code || '', area_m2: plot.area_m2 || 20, field_name: plot.field_name || '',
+        variety: plot.variety || '', previous_crop: plot.previous_crop || '', soil_type: plot.soil_type || '',
+        sowing_date: plot.sowing_date || '', sowing_rate: plot.sowing_rate ?? null,
+        row_spacing: plot.row_spacing ?? null, sowing_depth: plot.sowing_depth ?? null,
+        sowing_method: plot.sowing_method || '', plot_orientation: plot.plot_orientation || '',
+        replication: plot.replication ?? null, experiment_year: plot.experiment_year ?? null,
+      });
+      modal.show = true;
+    }
+
+    async function savePlot() {
+      if (!plotForm.block || !plotForm.treatment) {
+        alert('请填写区组和处理'); return;
+      }
+      if (!plotForm.plot_code) {
+        plotForm.plot_code = `${plotForm.block}-${plotForm.treatment}`;
+      }
+      try {
+        if (editingPlotCode.value) {
+          await api('PUT', `/api/v1/plots/${editingPlotCode.value}`, plotForm);
+        } else {
+          await api('POST', '/api/v1/plots', plotForm);
+        }
+        modal.show = false;
+        await loadPlots();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+    
+    async function deletePlot(plot) {
+      if (!confirm(`确定删除小区 "${plot.plot_code}" 吗？`)) return;
+      // Note: API doesn't have DELETE for plots yet, need to add
+      alert('小区删除功能暂未实现');
+    }
+
+    // ============================================================
+    // 铁肥施用记录 CRUD
+    // ============================================================
+    async function loadFertLogs() {
+      try {
+        const params = fertLogFilter.base_code ? `?base_code=${encodeURIComponent(fertLogFilter.base_code)}` : '';
+        const res = await api('GET', `/api/v1/fertilization${params}`);
+        fertLogs.value = res.data || [];
+      } catch (e) { console.error('loadFertLogs', e); fertLogs.value = []; }
+    }
+
+    function showFertLogModal(log = null) {
+      modal.type = 'fert_log';
+      modal.title = log ? '编辑施用记录' : '新增施用记录';
+      editingFertLogId.value = log ? log.id : null;
+      Object.assign(fertLogForm, {
+        plot_code: log?.plot_code || '', application_date: log?.application_date || '',
+        growth_stage: log?.growth_stage || '', fertilizer_type: log?.fertilizer_type || '',
+        application_method: log?.application_method || '',
+        concentration: log?.concentration ?? null, dilution_ratio: log?.dilution_ratio ?? null,
+        dose_per_plot: log?.dose_per_plot ?? null, dose_per_mu: log?.dose_per_mu ?? null,
+        active_iron_amount: log?.active_iron_amount ?? null, spray_volume: log?.spray_volume ?? null,
+        application_times: log?.application_times ?? 1, operator: log?.operator || '',
+        weather_temp: log?.weather_temp ?? null, weather_humidity: log?.weather_humidity ?? null,
+        remarks: log?.remarks || '',
+      });
+      modal.show = true;
+    }
+
+    async function saveFertLog() {
+      if (!fertLogForm.plot_code) { alert('请选择小区'); return; }
+      if (!fertLogForm.application_date) { alert('请选择施用日期'); return; }
+      if (!fertLogForm.fertilizer_type) { alert('请选择肥料类型'); return; }
+      try {
+        if (editingFertLogId.value) {
+          await api('PUT', `/api/v1/fertilization/${editingFertLogId.value}`, fertLogForm);
+        } else {
+          await api('POST', '/api/v1/fertilization', fertLogForm);
+        }
+        modal.show = false;
+        await loadFertLogs();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+
+    async function deleteFertLog(log) {
+      if (!confirm(`确定删除该施用记录吗？\n小区: ${log.plot_code}\n日期: ${log.application_date}`)) return;
+      try {
+        await api('DELETE', `/api/v1/fertilization/${log.id}`);
+        await loadFertLogs();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+
+    // ============================================================
+    // 田间管理记录 CRUD
+    // ============================================================
+    async function loadFieldMgmtLogs() {
+      try {
+        const params = fieldMgmtFilter.base_code ? `?base_code=${encodeURIComponent(fieldMgmtFilter.base_code)}` : '';
+        const res = await api('GET', `/api/v1/field-management${params}`);
+        fieldMgmtLogs.value = res.data || [];
+      } catch (e) { console.error('loadFieldMgmtLogs', e); fieldMgmtLogs.value = []; }
+    }
+
+    function showFieldMgmtModal(log = null) {
+      modal.type = 'field_mgmt_log';
+      modal.title = log ? '编辑管理记录' : '新增管理记录';
+      editingFieldMgmtId.value = log ? log.id : null;
+      const defaultBase = bases.value.length ? bases.value[0].base_code : '';
+      Object.assign(fieldMgmtForm, {
+        base_code: log?.base_code || defaultBase,
+        plot_code: log?.plot_code || '',
+        management_date: log?.management_date || '',
+        management_type: log?.management_type || '',
+        input_name: log?.input_name || '',
+        input_amount: log?.input_amount ?? null,
+        input_unit: log?.input_unit || '',
+        method: log?.method || '',
+        operator: log?.operator || '',
+        remarks: log?.remarks || '',
+      });
+      modal.show = true;
+    }
+
+    async function saveFieldMgmt() {
+      if (!fieldMgmtForm.management_date) { alert('请选择管理日期'); return; }
+      if (!fieldMgmtForm.management_type) { alert('请选择管理类型'); return; }
+      try {
+        if (editingFieldMgmtId.value) {
+          await api('PUT', `/api/v1/field-management/${editingFieldMgmtId.value}`, fieldMgmtForm);
+        } else {
+          await api('POST', '/api/v1/field-management', fieldMgmtForm);
+        }
+        modal.show = false;
+        await loadFieldMgmtLogs();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+
+    async function deleteFieldMgmt(log) {
+      if (!confirm(`确定删除该管理记录吗？\n日期: ${log.management_date}\n类型: ${log.management_type}`)) return;
+      try {
+        await api('DELETE', `/api/v1/field-management/${log.id}`);
+        await loadFieldMgmtLogs();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+    
+    function showInitModal() {
+      if (!bases.value.length) {
+        alert('请先创建一个试验基地');
+        return;
+      }
+      const defaultBaseCode = selectedBaseFilter.value || bases.value[0].base_code;
+      initForm.base_code = defaultBaseCode;
+      initForm.blocks = 3;
+      initForm.treatments = 6;
+      modal.type = 'init';
+      modal.title = '初始化小区';
+      modal.show = true;
+    }
+    
+    async function doInitPlots() {
+      const total = initForm.blocks * initForm.treatments;
+      if (!confirm(`确定要创建 ${total} 个小区吗？\n基地: ${initForm.base_code}\n区组数: ${initForm.blocks}\n每区组处理数: ${initForm.treatments}`)) return;
+      try {
+        const payload = {
+          base_code: initForm.base_code,
+          num_blocks: initForm.blocks,
+          num_treatments: initForm.treatments
+        };
+        const res = await api('POST', '/api/v1/plots/init', payload);
+        alert(`✅ 成功初始化 ${res.data?.created || total} 个小区！`);
+        modal.show = false;
+        await loadPlots();
+      } catch (e) {
+        alert('❌ 初始化失败：' + e.message);
+      }
+    }
+    
+    async function initDefaultPlots() {
+      showInitModal();
+    }
+    
+    // Operations
+    async function saveOperation() {
+      if (!newOp.date || !newOp.op_type) {
+        alert('请填写日期和操作类型'); return;
+      }
+      try {
+        const payload = {
+          plot_code: newOp.plot_code || null,
+          data: {
+            date: newOp.date,
+            op_type: newOp.op_type,
+            treatment: newOp.treatment,
+            block: newOp.block,
+            weather: newOp.weather,
+            temperature: newOp.temperature,
+            operator: newOp.operator,
+            remarks: newOp.remarks
+          }
+        };
+        await api('POST', '/api/v1/table/operation_log', payload);
+        alert('✅ 保存成功！');
+        Object.assign(newOp, { date: '', op_type: '', plot_code: '', block: '', treatment: '', weather: '', temperature: null, operator: '', remarks: '' });
+        await loadOperations();
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+    
+    // QR Code
+    async function showQRCode(plot) {
+      qrPlot.value = plot;
+      qrUrl.value = `${window.location.origin}/mobile_entry?plot=${plot.plot_code}`;
+      
+      // Generate QR code using external API
+      const qrContent = `${window.location.origin}/mobile_entry?plot=${plot.plot_code}`;
+      qrCodeDataUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrContent)}`;
+      modal.type = 'qr';
+      modal.title = '扫码录入';
+      modal.show = true;
+    }
+    
+    // Export
+    async function exportExcel() {
+      try {
+        const url = exportBase.value 
+          ? `/api/v1/export/excel?base_code=${exportBase.value}` 
+          : '/api/v1/export/excel';
+        const res = await fetch(API_BASE + url);
+        if (!res.ok) throw new Error('导出失败');
+        const blob = await res.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `wheat_data_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(downloadUrl);
+      } catch (e) { alert('❌ ' + e.message); }
+    }
+    
+    async function loadExportData() {
+      try {
+        const url = exportBase.value 
+          ? `/api/v1/table/${exportTable.value}?base_code=${exportBase.value}` 
+          : `/api/v1/table/${exportTable.value}`;
+        const res = await api('GET', url);
+        exportData.value = res.data || [];
+      } catch (e) { console.error('Export error:', e); exportData.value = []; }
+    }
+    
+    // Helpers
+    function getTreatmentColor(code) {
+      const t = treatmentCodes.find(c => c.code === code);
+      return t ? t.color : '#f0f0f0';
+    }
+    
+    function getTreatmentName(code) {
+      const t = treatmentCodes.find(c => c.code === code);
+      return t ? t.name : code;
+    }
+    
+    function getTagClass(value) {
+      if (!value || value === '—') return '';
+      const num = parseInt(value);
+      if (num >= 80) return 'tag tag-success';
+      if (num >= 50) return 'tag tag-warning';
+      return 'tag tag-info';
+    }
+    
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      return `${year}/${month}/${day}`;
+    }
+    
+    function getPlotCodeById(plotId) {
+      const plot = plots.value.find(p => p.id === plotId);
+      return plot ? plot.plot_code : null;
+    }
+    
+    // Map computed
+    const basesWithCoords = computed(() => {
+      return bases.value.filter(b => b.latitude && b.longitude);
+    });
+
+    // Map functions
+    function switchToMapView() {
+      baseViewMode.value = 'map';
+      // v-show 切换后，等 DOM 更新再初始化地图（nextTick 在 JS 作用域内可用）
+      nextTick(() => { initBaseMap(); });
+    }
+
+    function initBaseMap() {
+      const container = document.getElementById('baseMap');
+      if (!container) {
+        // 容器尚不存在，延迟重试
+        setTimeout(() => initBaseMap(), 200);
+        return;
+      }
+
+      // 如果地图已存在，验证容器是否仍然有效（bases 页面用 v-if，
+      // 离开后 DOM 会被销毁，旧实例的 _container 会变成失效引用）
+      if (mapInstance.value) {
+        const oldContainer = mapInstance.value.getContainer();
+        // 容器不在文档中或已被移除，销毁旧实例以便重建
+        if (!oldContainer || !document.body.contains(oldContainer)) {
+          try { mapInstance.value.remove(); } catch (e) {}
+          mapInstance.value = null;
+          baseMarkers.value = [];
+        } else {
+          // 容器仍然有效，只需刷新标记并重算尺寸
+          updateBaseMarkers();
+          setTimeout(() => mapInstance.value && mapInstance.value.invalidateSize(), 200);
+          return;
+        }
+      }
+
+      // 确保容器有尺寸（v-show 切换后容器可能尚未布局完成）
+      if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+        setTimeout(() => initBaseMap(), 200);
+        return;
+      }
+
+      // 默认使用第一个有坐标的基地或中国中心
+      const bases = basesWithCoords.value;
+      if (bases.length > 0) {
+        const first = bases[0];
+        mapInstance.value = L.map('baseMap').setView([first.latitude, first.longitude], 10);
+      } else {
+        mapInstance.value = L.map('baseMap').setView([34.1234, 113.4567], 5);
+      }
+
+      // 使用 OpenStreetMap 瓦片（多个国内可访问镜像，自动回退）
+      const tileLayers = [
+        {
+          url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          options: { subdomains: 'abc', maxZoom: 19 }
+        },
+        {
+          url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+          options: { subdomains: '1234', maxZoom: 18 }
+        }
+      ];
+
+      // 主瓦片层：高德地图（国内访问稳定，中文标注）
+      const primary = tileLayers[1];
+      const baseLayer = L.tileLayer(primary.url, {
+        subdomains: primary.options.subdomains,
+        maxZoom: primary.options.maxZoom,
+        attribution: '&copy; 高德地图',
+        crossOrigin: true
+      }).addTo(mapInstance.value);
+
+      // 主瓦片加载失败时回退到 OSM
+      baseLayer.on('tileerror', function() {
+        if (!mapInstance.value._fallbackAdded) {
+          mapInstance.value._fallbackAdded = true;
+          const fallback = tileLayers[0];
+          L.tileLayer(fallback.url, {
+            subdomains: fallback.options.subdomains,
+            maxZoom: fallback.options.maxZoom,
+            attribution: '&copy; OpenStreetMap'
+          }).addTo(mapInstance.value);
+        }
+      });
+
+      updateBaseMarkers();
+
+      // 强制重新计算地图尺寸（多次以确保切换动画完成后正确显示）
+      [200, 500, 1000].forEach(delay => {
+        setTimeout(() => {
+          if (mapInstance.value) mapInstance.value.invalidateSize();
+        }, delay);
+      });
+    }
+
+    function updateBaseMarkers() {
+      if (!mapInstance.value) return;
+      baseMarkers.value.forEach(m => mapInstance.value.removeLayer(m));
+      baseMarkers.value = [];
+      basesWithCoords.value.forEach(base => {
+        const marker = L.marker([base.latitude, base.longitude]).addTo(mapInstance.value);
+        marker.bindPopup(`<strong>${base.base_name}</strong><br/>${base.address || ''}`);
+        baseMarkers.value.push(marker);
+      });
+      if (baseMarkers.value.length > 0) {
+        const group = L.featureGroup(baseMarkers.value);
+        mapInstance.value.fitBounds(group.getBounds().pad(0.2));
+      }
+    }
+
+    function focusBaseOnMap(base) {
+      if (!mapInstance.value || !base.latitude || !base.longitude) return;
+      mapInstance.value.setView([base.latitude, base.longitude], 15);
+      const marker = baseMarkers.value.find(m => {
+        const latLng = m.getLatLng();
+        return latLng.lat === base.latitude && latLng.lng === base.longitude;
+      });
+      if (marker) marker.openPopup();
+    }
+
+    // Watch for page changes to load data
+    watch(currentPage, async (newPage, oldPage) => {
+      // 离开 bases 页面时清理地图实例（bases 页面用 v-if，DOM 会被销毁，
+      // 残留的 Leaflet 实例会导致返回时地图无法重新初始化）
+      if (oldPage === 'bases' && newPage !== 'bases') {
+        if (mapInstance.value) {
+          mapInstance.value.remove();
+          mapInstance.value = null;
+        }
+        baseMarkers.value = [];
+      }
+      if (newPage === 'dashboard') {
+        loadDashboard();
+        loadPlots();
+      } else if (newPage === 'bases') {
+        loadBases();
+        // 仅在地图视图下初始化地图，避免在 list 视图下对 display:none 容器做无意义的重试
+        if (baseViewMode.value === 'map') {
+          nextTick(() => { initBaseMap(); });
+        }
+      } else if (newPage === 'plots') {
+        loadPlots();
+        loadBases();
+      } else if (newPage === 'operations') {
+        loadOperations();
+        loadPlots();
+      } else if (newPage === 'fertilization') {
+        loadFertLogs();
+        loadPlots();
+        loadBases();
+      } else if (newPage === 'field_mgmt') {
+        loadFieldMgmtLogs();
+        loadPlots();
+        loadBases();
+      } else if (newPage === 'export') {
+        loadExportData();
+        loadBases();
+      } else if (['soil', 'phenology', 'emergence', 'agronomic', 'physiological', 'yield', 'quality'].includes(newPage)) {
+        loadDataRecords();
+        loadPlots();
+      }
+      // Reset selections
+      selectedPlotCode.value = '';
+      Object.keys(formData).forEach(k => delete formData[k]);
+      currentRecords.value = [];
+    });
+    
+    // Initial load
+    onMounted(async () => {
+      await loadBases();
+      await loadPlots();
+      await loadDashboard();
+    });
+    
+    return {
+      // Navigation
+      currentPage, currentPageTitles, currentPageDescriptions,
+      // Data
+      bases, plots, dashboardData, operations,
+      // Map view
+      baseViewMode, viewBtnStyle, viewBtnActiveStyle, mapInstance, baseMarkers,
+      // Filters
+      selectedBaseFilter, selectedDataBase, selectedPlotCode, soilPhase, operationBase,
+      // Forms
+      baseForm, plotForm, newOp, formData,
+      // Modals
+      modal, qrCodeDataUrl, qrPlot, qrUrl,
+      // Export
+      exportBase, exportTable, exportData,
+      // Constants
+      treatmentCodes, blockNames, opTypes, weatherOptions, tableNames, getTableName, getStatCardClass, getStatIcon,
+      // Computed
+      currentFormFields, currentTableColumns, currentRecords, filteredPlots, basesWithCoords,
+      // Methods
+      showBaseModal, editBase: showBaseModal, saveBase, deleteBase,
+      showPlotModal, editPlot, savePlot, deletePlot, initDefaultPlots, showInitModal, doInitPlots,
+      viewBaseDetail, onBaseFilterChange, loadWeather, refreshWeather,
+      saveRecord, loadDataRecords, loadCurrentRecord,
+      saveOperation,
+      showQRCode, exportExcel, loadExportData,
+      // 铁肥施用 & 田间管理
+      fertLogs, fertLogFilter, fertLogForm, loadFertLogs, showFertLogModal, saveFertLog, deleteFertLog,
+      fieldMgmtLogs, fieldMgmtFilter, fieldMgmtForm, loadFieldMgmtLogs, showFieldMgmtModal, saveFieldMgmt, deleteFieldMgmt,
+      // Map methods
+      initBaseMap, updateBaseMarkers, focusBaseOnMap, switchToMapView, nextTick,
+      // Helpers
+      getTreatmentColor, getTreatmentName, getTagClass, formatDate, getPlotCodeById, getWeatherIcon, getWeatherTrendData, formatLocalDate,
+      // Weather chart helpers
+      tempPixelY, chartLinePoints, chartPastLinePoints,
+      // Forms
+      initForm,
+      // Data
+      baseDetails, weatherData
+    };
+  }
+});
+
+app.mount('#app');
+</script>
+</body>
+</html>

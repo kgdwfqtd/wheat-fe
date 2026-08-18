@@ -4,9 +4,9 @@
 import sys
 import streamlit as st
 import pandas as pd
-from database import (init_db, init_plots, get_all_plots, get_completion_stats,
-                       get_operations, get_treatment_table_matrix)
+from wheat_app.services.experiment_service import get_dashboard_snapshot
 from utils import TREATMENT_COLORS, TREATMENT_NAMES, TREATMENT_CODES, setup_sidebar, rename_columns_cn
+from wheat_app.repositories.experiment_repository import init_db, init_plots
 
 if __name__ == "__main__":
     from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
@@ -48,25 +48,29 @@ st.title("🌾 纳米铁肥小麦试验记录系统")
 st.caption("基于《纳米铁肥在小麦上的应用效果对比试验方案》编制")
 
 # ----- 数据概览卡片 -----
-stats = get_completion_stats()
-plots_df = get_all_plots()
-total_plots = len(plots_df)
+dashboard = get_dashboard_snapshot()
+stats = dashboard["stats"]
+plots_df = dashboard["plots_df"]
+total_plots = dashboard.get("total_plots", len(plots_df) if plots_df is not None else 0)
+base_count = dashboard.get("base_count", 0)
 
 st.markdown("### 📊 数据录入概览")
 
-cols = st.columns(4)
+cols = st.columns(5)
 with cols[0]:
     st.metric("小区总数", total_plots)
 with cols[1]:
+    st.metric("基地总数", base_count)
+with cols[2]:
     completed = sum(
         1 for k, v in stats.items()
         if k != "operation_log" and isinstance(v, dict) and v.get("pct", 0) == 100
     )
     st.metric("完成 100% 的表", f"{completed}/7")
-with cols[2]:
+with cols[3]:
     op_count = stats.get("operation_log", {}).get("filled", 0)
     st.metric("操作日志条数", op_count)
-with cols[3]:
+with cols[4]:
     pcts = []
     for k, v in stats.items():
         if k != "operation_log" and isinstance(v, dict):
@@ -114,7 +118,7 @@ tables_1to1 = ["phenology", "emergence", "agronomic_traits",
 tbl_short = ["土壤", "物候", "出苗", "农艺", "生理", "产量", "品质"]
 all_tbl_keys = ["soil_data"] + tables_1to1
 
-matrix = get_treatment_table_matrix()
+matrix = dashboard["treatment_matrix"]
 matrix_data = []
 for trt in TREATMENT_CODES:
     row_data = [trt, TREATMENT_NAMES.get(trt, "")]
@@ -130,7 +134,7 @@ st.dataframe(matrix_df, width='stretch', hide_index=True)
 st.markdown("---")
 st.markdown("### 📝 最近操作记录")
 
-ops_df = get_operations(limit=10)
+ops_df = dashboard["recent_ops"]
 if not ops_df.empty:
     st.dataframe(rename_columns_cn(ops_df), width='stretch', hide_index=True)
 else:

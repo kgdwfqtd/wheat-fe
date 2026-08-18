@@ -1,13 +1,43 @@
 # Byte-compiled
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+
+# Environment & secrets
+.env
+.env.local
+.env.production
+mobile_api/.env
+config.py.backup
 
 # Database
 *.db
 *.db.bak
+*.sqlite
+*.sqlite3
+experiment.db
+experiment.db.*.bak
 
 # Excel exports
 *.xlsx
+
+# Logs
+*.log
+!logs/.gitkeep
+startup.log
+test_output.txt
+
+# Node.js / npm
+node_modules/
+package.json
+package-lock.json
+npm-debug.log*
+
+# Python virtual environment
+venv/
+.venv/
+env/
 
 # IDE
 .vscode/
@@ -16,3 +46,9 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Temp files
+*.tmp
+*.bak
+*.swp
