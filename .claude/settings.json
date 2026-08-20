@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f _smoke_test.py \"C:/Users/62614/AppData/Local/Temp/_wheat_check.js\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

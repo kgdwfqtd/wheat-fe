@@ -23,7 +23,21 @@ plots_df = get_all_plots()
 base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
 if not base_options:
     base_options = ["000000000000"]
-selected_base = st.selectbox("选择试验基地", options=base_options, key="base_selector")
+# Extract query parameters to pre-select base and plot via QR code redirect
+query_params = st.experimental_get_query_params()
+plot_param = query_params.get("plot", [None])[0]
+default_base = None
+if plot_param:
+    matching_row = plots_df[plots_df["plot_code"] == plot_param]
+    if not matching_row.empty:
+        default_base = matching_row.iloc[0]["base_code"]
+
+selected_base = st.selectbox(
+    "选择试验基地",
+    options=base_options,
+    key="base_selector",
+    index=base_options.index(default_base) if default_base and default_base in base_options else 0,
+)
 filtered_plots_df = plots_df[plots_df["base_code"] == selected_base]
 plot_options = filtered_plots_df["plot_code"].tolist()
 

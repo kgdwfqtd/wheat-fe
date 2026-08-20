@@ -1,0 +1,4 @@
+Put generated migration files here. Use:
+
+alembic -c alembic.ini revision --autogenerate -m "initial"
+alembic -c alembic.ini upgrade head

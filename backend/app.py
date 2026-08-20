@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -26,7 +26,11 @@ from wheat_app.repositories.experiment_repository import (
     get_completion_stats,
     get_operations,
     get_plot_by_code,
+    get_record_by_id,
+    get_record_owner,
     get_treatment_table_matrix,
+    query_data_view,
+    update_record_by_id,
     upsert_record,
     update_experiment_base,
     save_weather_data,
@@ -142,18 +146,23 @@ class FieldManagementRequest(BaseModel):
 
 class TableRecordRequest(BaseModel):
     plot_code: str | None = None
+    base_code: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
-def _get_plot_id(plot_code: str) -> int:
-    plot = get_plot_by_code(plot_code)
+def _get_plot_id(plot_code: str, base_code: str | None = None) -> int:
+    plot = get_plot_by_code(plot_code, base_code=base_code)
     if plot is None:
-        raise HTTPException(status_code=404, detail=f"小区 {plot_code} 不存在")
+        detail = f"小区 {plot_code} 不存在" if not base_code else f"基地 {base_code} 下小区 {plot_code} 不存在"
+        raise HTTPException(status_code=404, detail=detail)
     return int(plot["id"])
 
 
 def _validate_base_code(base_code: str) -> str:
+    # 兼容旧版本默认基地编号（12 位全 0），其余必须为 14 位数字
+    if base_code == "000000000000":
+        return base_code
     if not re.fullmatch(r"\d{6}\d{2}\d{4}\d{2}", base_code):
         raise HTTPException(
             status_code=400,
@@ -305,7 +314,8 @@ async def create_base(payload: ExperimentBaseCreateRequest):
 
 @app.delete("/api/v1/bases/{base_code}")
 async def delete_base(base_code: str):
-    _validate_base_code(base_code)
+    # 删除操作允许删除任意存在的基地（跳过编号格式校验），
+    # 因为历史或示例数据可能不满足当前校验规则。
     if not get_base_by_code(base_code):
         raise HTTPException(status_code=404, detail=f"基地 {base_code} 不存在")
     delete_experiment_base(base_code)
@@ -327,12 +337,13 @@ async def create_plot(payload: PlotCreateRequest):
         raise HTTPException(status_code=404, detail=f"基地 {base_code} 不存在，请先创建该试验基地")
 
     plot_code = payload.plot_code or f"{payload.block}-{payload.treatment}"
-    existing = get_plot_by_code(plot_code)
-    if existing is not None:
-        raise HTTPException(status_code=409, detail=f"小区 {plot_code} 已存在")
 
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
+            # 同一基地下唯一性检查（不同基地允许存在相同 plot_code）
+            cur.execute("SELECT 1 FROM plots WHERE base_code = %s AND plot_code = %s", (base_code, plot_code))
+            if cur.fetchone() is not None:
+                raise HTTPException(status_code=409, detail=f"小区 {plot_code} 在该基地已存在")
             cur.execute(
                 """
                 INSERT INTO plots (base_code, block, treatment, plot_code, area_m2, field_name,
@@ -377,18 +388,17 @@ async def init_plots(payload: dict):
                     block = block_names[i]
                     treatment = treatment_names[j]
                     plot_code = f"{block}-{treatment}"
-                    try:
-                        cur.execute(
-                            """
-                            INSERT INTO plots (base_code, block, treatment, plot_code, area_m2)
-                            VALUES (%s, %s, %s, %s, %s)
-                            ON CONFLICT (plot_code) DO NOTHING
-                            """,
-                            (base_code, block, treatment, plot_code, 20.0),
-                        )
+                    # plots 的唯一约束是 (base_code, plot_code) 与 (base_code, block, treatment)
+                    cur.execute(
+                        """
+                        INSERT INTO plots (base_code, block, treatment, plot_code, area_m2)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (base_code, plot_code) DO NOTHING
+                        """,
+                        (base_code, block, treatment, plot_code, 20.0),
+                    )
+                    if cur.rowcount > 0:
                         created += 1
-                    except Exception:
-                        pass
     
     return _success_response({
         "base_code": base_code,
@@ -413,12 +423,22 @@ async def get_plot(plot_code: str):
 
 @app.put("/api/v1/plots/{plot_code}")
 async def update_plot(plot_code: str, payload: PlotCreateRequest):
-    existing = get_plot_by_code(plot_code)
-    if existing is None:
-        raise HTTPException(status_code=404, detail=f"小区 {plot_code} 不存在")
-
+    # 小区编号在不同基地可重复，更新必须按「基地 + 编号」定位，避免改到其它基地同名小区
+    base_code = _validate_base_code(payload.base_code)
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT id FROM plots WHERE base_code = %s AND plot_code = %s", (base_code, plot_code))
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"小区 {plot_code} 在基地 {base_code} 不存在")
+            existing_id = row[0]
+
+            new_code = payload.plot_code or plot_code
+            if new_code != plot_code:
+                cur.execute("SELECT 1 FROM plots WHERE base_code = %s AND plot_code = %s", (base_code, new_code))
+                if cur.fetchone() is not None:
+                    raise HTTPException(status_code=409, detail=f"小区 {new_code} 在该基地已存在")
+
             cur.execute(
                 """
                 UPDATE plots
@@ -443,7 +463,7 @@ async def update_plot(plot_code: str, payload: PlotCreateRequest):
                 (
                     payload.block,
                     payload.treatment,
-                    payload.plot_code or plot_code,
+                    new_code,
                     payload.area_m2,
                     payload.field_name,
                     payload.variety,
@@ -457,7 +477,7 @@ async def update_plot(plot_code: str, payload: PlotCreateRequest):
                     payload.plot_orientation,
                     payload.replication,
                     payload.experiment_year,
-                    int(existing["id"]),
+                    existing_id,
                 ),
             )
 
@@ -523,8 +543,10 @@ async def list_fertilization_logs(base_code: str | None = None, plot_code: str |
 
 
 @app.post("/api/v1/fertilization")
-async def create_fertilization_log(payload: FertilizationLogRequest):
+async def create_fertilization_log(payload: FertilizationLogRequest,
+                                   authorization: str | None = Header(default=None)):
     """新增铁肥施用记录。"""
+    user = _get_current_user(authorization)
     plot = get_plot_by_code(payload.plot_code)
     if plot is None:
         raise HTTPException(status_code=404, detail=f"小区 {payload.plot_code} 不存在")
@@ -537,23 +559,31 @@ async def create_fertilization_log(payload: FertilizationLogRequest):
                 INSERT INTO fertilization_log (plot_id, base_code, application_date, growth_stage,
                     fertilizer_type, application_method, concentration, dilution_ratio,
                     dose_per_plot, dose_per_mu, active_iron_amount, spray_volume,
-                    application_times, operator, weather_temp, weather_humidity, remarks)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    application_times, operator, weather_temp, weather_humidity, remarks,
+                    created_by, updated_by, created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
                 RETURNING id
                 """,
                 (plot_id, base_code, payload.application_date, payload.growth_stage,
                  payload.fertilizer_type, payload.application_method, payload.concentration,
                  payload.dilution_ratio, payload.dose_per_plot, payload.dose_per_mu,
                  payload.active_iron_amount, payload.spray_volume, payload.application_times,
-                 payload.operator, payload.weather_temp, payload.weather_humidity, payload.remarks),
+                 payload.operator, payload.weather_temp, payload.weather_humidity, payload.remarks,
+                 user["username"], user["username"]),
             )
             new_id = cur.fetchone()[0]
     return _success_response({"id": new_id}, message="fertilization log created")
 
 
 @app.put("/api/v1/fertilization/{log_id}")
-async def update_fertilization_log(log_id: int, payload: FertilizationLogRequest):
+async def update_fertilization_log(log_id: int, payload: FertilizationLogRequest,
+                                   authorization: str | None = Header(default=None)):
     """更新铁肥施用记录。"""
+    user = _get_current_user(authorization)
+    existing = get_record_by_id("fertilization_log", log_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"施用记录 {log_id} 不存在")
+    _check_edit_permission(user, existing.get("updated_by"))
     plot = get_plot_by_code(payload.plot_code)
     if plot is None:
         raise HTTPException(status_code=404, detail=f"小区 {payload.plot_code} 不存在")
@@ -568,28 +598,31 @@ async def update_fertilization_log(log_id: int, payload: FertilizationLogRequest
                     fertilizer_type=%s, application_method=%s, concentration=%s,
                     dilution_ratio=%s, dose_per_plot=%s, dose_per_mu=%s,
                     active_iron_amount=%s, spray_volume=%s, application_times=%s,
-                    operator=%s, weather_temp=%s, weather_humidity=%s, remarks=%s
+                    operator=%s, weather_temp=%s, weather_humidity=%s, remarks=%s,
+                    updated_by=%s, updated_at=CURRENT_TIMESTAMP
                 WHERE id=%s
                 """,
                 (plot_id, base_code, payload.application_date, payload.growth_stage,
                  payload.fertilizer_type, payload.application_method, payload.concentration,
                  payload.dilution_ratio, payload.dose_per_plot, payload.dose_per_mu,
                  payload.active_iron_amount, payload.spray_volume, payload.application_times,
-                 payload.operator, payload.weather_temp, payload.weather_humidity, payload.remarks, log_id),
+                 payload.operator, payload.weather_temp, payload.weather_humidity, payload.remarks,
+                 user["username"], log_id),
             )
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail=f"施用记录 {log_id} 不存在")
     return _success_response({"id": log_id}, message="fertilization log updated")
 
 
 @app.delete("/api/v1/fertilization/{log_id}")
-async def delete_fertilization_log(log_id: int):
+async def delete_fertilization_log(log_id: int, authorization: str | None = Header(default=None)):
     """删除铁肥施用记录。"""
+    user = _get_current_user(authorization)
+    existing = get_record_by_id("fertilization_log", log_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"施用记录 {log_id} 不存在")
+    _check_edit_permission(user, existing.get("updated_by"))
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM fertilization_log WHERE id=%s", (log_id,))
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail=f"施用记录 {log_id} 不存在")
     return _success_response({"id": log_id}, message="fertilization log deleted")
 
 
@@ -625,8 +658,10 @@ async def list_field_management(base_code: str | None = None, plot_code: str | N
 
 
 @app.post("/api/v1/field-management")
-async def create_field_management(payload: FieldManagementRequest):
+async def create_field_management(payload: FieldManagementRequest,
+                                  authorization: str | None = Header(default=None)):
     """新增田间管理记录。"""
+    user = _get_current_user(authorization)
     plot_id = None
     base_code = payload.base_code or "000000000000"
     if payload.plot_code:
@@ -640,20 +675,23 @@ async def create_field_management(payload: FieldManagementRequest):
             cur.execute(
                 """
                 INSERT INTO field_management (plot_id, base_code, management_date, management_type,
-                    input_name, input_amount, input_unit, method, operator, remarks)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    input_name, input_amount, input_unit, method, operator, remarks,
+                    created_by, updated_by, created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
                 RETURNING id
                 """,
                 (plot_id, base_code, payload.management_date, payload.management_type,
                  payload.input_name, payload.input_amount, payload.input_unit,
-                 payload.method, payload.operator, payload.remarks),
+                 payload.method, payload.operator, payload.remarks,
+                 user["username"], user["username"]),
             )
             new_id = cur.fetchone()[0]
     return _success_response({"id": new_id}, message="field management created")
 
 
 @app.put("/api/v1/field-management/{log_id}")
-async def update_field_management(log_id: int, payload: FieldManagementRequest):
+async def update_field_management(log_id: int, payload: FieldManagementRequest,
+                                  authorization: str | None = Header(default=None)):
     """更新田间管理记录。"""
     plot_id = None
     base_code = payload.base_code or "000000000000"
@@ -663,6 +701,11 @@ async def update_field_management(log_id: int, payload: FieldManagementRequest):
             raise HTTPException(status_code=404, detail=f"小区 {payload.plot_code} 不存在")
         plot_id = int(plot["id"])
         base_code = plot.get("base_code") or base_code
+    user = _get_current_user(authorization)
+    existing = get_record_by_id("field_management", log_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"管理记录 {log_id} 不存在")
+    _check_edit_permission(user, existing.get("updated_by"))
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -670,26 +713,28 @@ async def update_field_management(log_id: int, payload: FieldManagementRequest):
                 UPDATE field_management SET
                     plot_id=%s, base_code=%s, management_date=%s, management_type=%s,
                     input_name=%s, input_amount=%s, input_unit=%s, method=%s,
-                    operator=%s, remarks=%s
+                    operator=%s, remarks=%s, updated_by=%s, updated_at=CURRENT_TIMESTAMP
                 WHERE id=%s
                 """,
                 (plot_id, base_code, payload.management_date, payload.management_type,
                  payload.input_name, payload.input_amount, payload.input_unit,
-                 payload.method, payload.operator, payload.remarks, log_id),
+                 payload.method, payload.operator, payload.remarks,
+                 user["username"], log_id),
             )
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail=f"管理记录 {log_id} 不存在")
     return _success_response({"id": log_id}, message="field management updated")
 
 
 @app.delete("/api/v1/field-management/{log_id}")
-async def delete_field_management(log_id: int):
+async def delete_field_management(log_id: int, authorization: str | None = Header(default=None)):
     """删除田间管理记录。"""
+    user = _get_current_user(authorization)
+    existing = get_record_by_id("field_management", log_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"管理记录 {log_id} 不存在")
+    _check_edit_permission(user, existing.get("updated_by"))
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM field_management WHERE id=%s", (log_id,))
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail=f"管理记录 {log_id} 不存在")
     return _success_response({"id": log_id}, message="field management deleted")
 
 
@@ -707,23 +752,28 @@ async def get_table_data(table_name: str, base_code: str | None = None):
 
 
 @app.post("/api/v1/table/{table_name}")
-async def upsert_table_record(table_name: str, payload: TableRecordRequest):
+async def upsert_table_record(table_name: str, payload: TableRecordRequest,
+                              authorization: str | None = Header(default=None)):
     if table_name not in ALLOWED_TABLES:
         raise HTTPException(status_code=404, detail=f"不支持的数据表: {table_name}")
     if not payload.data:
         raise HTTPException(status_code=400, detail="请求体缺少 data 字段或为空")
 
+    # 登录校验（桌面端主界面强制登录，api() 已附带 token）
+    user = _get_current_user(authorization)
+
     if table_name == "operation_log":
         record = dict(payload.data)
         if payload.plot_code:
-            record["plot_id"] = _get_plot_id(payload.plot_code)
-        add_operation(**record)
+            record["plot_id"] = _get_plot_id(payload.plot_code, payload.base_code)
+        # operation_log 为追加式日志：新增不校验归属，但记录录入人
+        add_operation(**record, created_by=user["username"], updated_by=user["username"])
         return _success_response({"table": table_name, "plot_code": payload.plot_code}, message="operation saved")
 
     if payload.plot_code is None:
         raise HTTPException(status_code=400, detail="该表需要提供 plot_code")
 
-    plot_id = _get_plot_id(payload.plot_code)
+    plot_id = _get_plot_id(payload.plot_code, payload.base_code)
     data = dict(payload.data)
 
     # emergence 表自动计算 rate_7d / rate_14d（避免手算错误）
@@ -750,8 +800,57 @@ async def upsert_table_record(table_name: str, payload: TableRecordRequest):
         except (TypeError, ValueError):
             pass
 
-    upsert_record(table_name, plot_id, data, extra_keys=dict(payload.extra) or None)
+    # 权限：已有记录（覆盖保存）时校验归属 = 管理员或本人（updated_by）；
+    # 无记录（None）视为新建，任何登录用户均可创建。
+    extra_keys = dict(payload.extra) or None
+    owner = get_record_owner(table_name, plot_id, extra_keys=extra_keys)
+    _check_edit_permission(user, owner, record_exists=owner is not None)
+    upsert_record(table_name, plot_id, data, extra_keys=extra_keys,
+                  created_by=user["username"], updated_by=user["username"])
     return _success_response({"table": table_name, "plot_code": payload.plot_code}, message="record saved")
+
+
+@app.put("/api/v1/table/{table_name}/{record_id}")
+async def update_table_record(table_name: str, record_id: int, payload: TableRecordRequest,
+                              authorization: str | None = Header(default=None)):
+    """按主键 id 更新日志表记录（操作日志/铁肥施用/田间管理），带归属权限校验。"""
+    if table_name not in ALLOWED_TABLES:
+        raise HTTPException(status_code=404, detail=f"不支持的数据表: {table_name}")
+    if not payload.data:
+        raise HTTPException(status_code=400, detail="请求体缺少 data 字段或为空")
+
+    user = _get_current_user(authorization)
+    existing = get_record_by_id(table_name, record_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"记录不存在: {table_name}#{record_id}")
+    _check_edit_permission(user, existing.get("updated_by"))
+
+    update_record_by_id(table_name, record_id, dict(payload.data), updated_by=user["username"])
+    return _success_response({"table": table_name, "record_id": record_id}, message="record updated")
+
+
+@app.get("/api/v1/data-view")
+async def get_data_view(table: str | None = None, base_code: str | None = None,
+                        authorization: str | None = Header(default=None)):
+    """「数据查看」聚合接口：返回各数据表记录（含小区/处理/录入人/更新时间与 editable 标志）。"""
+    user = _get_current_user(authorization)
+    tables = [table] if table else sorted(ALLOWED_TABLES)
+    rows: list[dict] = []
+    for t in tables:
+        if t not in ALLOWED_TABLES:
+            raise HTTPException(status_code=404, detail=f"不支持的数据表: {t}")
+        try:
+            recs = query_data_view(t, base_code=base_code)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"不支持的数据表: {t}")
+        for r in recs:
+            r = dict(r)
+            r["table_name"] = t
+            r["record_id"] = r.get("id")
+            owner = r.get("updated_by")
+            r["editable"] = (user["role"] == "admin") or bool(owner and owner == user["username"])
+            rows.append(r)
+    return _success_response(rows, message="data view loaded")
 
 
 @app.get("/api/v1/example")
@@ -1059,6 +1158,26 @@ def _fetch_qweather_weather(base_code, lat, lon):
             "is_day": True,
             "time": now.get("obsTime"),
         }
+        # 保存当日观测到数据库，便于后续补充历史数据
+        try:
+            today_str = today.isoformat()
+            save_weather_data(base_code, today_str, {
+                "temperature": current_data.get("temperature"),
+                "temperature_max": current_data.get("temperature"),
+                "temperature_min": current_data.get("temperature"),
+                "apparent_temperature": current_data.get("apparent_temperature"),
+                "humidity": current_data.get("humidity"),
+                "precipitation": current_data.get("precipitation"),
+                "precipitation_probability": None,
+                "wind_speed": current_data.get("wind_speed"),
+                "wind_direction": current_data.get("wind_direction"),
+                "wind_gust": current_data.get("wind_gust"),
+                "weather_code": current_data.get("weather_code"),
+                "weather_description": current_data.get("weather_description"),
+                "is_day": current_data.get("is_day", True),
+            })
+        except Exception as e:
+            print(f"Failed to save current QWeather observation: {e}")
 
     # 3. 获取空气质量数据 (使用v8新版API, v7已废弃)
     try:
@@ -1195,6 +1314,26 @@ def _fetch_open_meteo_weather(base_code, lat, lon):
             "is_day": current.get("is_day", True),
             "time": current.get("time"),
         }
+        # 保存当日观测到数据库
+        try:
+            today_str = today.isoformat()
+            save_weather_data(base_code, today_str, {
+                "temperature": current_data.get("temperature"),
+                "temperature_max": current_data.get("temperature"),
+                "temperature_min": current_data.get("temperature"),
+                "apparent_temperature": current_data.get("apparent_temperature"),
+                "humidity": current_data.get("humidity"),
+                "precipitation": current_data.get("precipitation"),
+                "precipitation_probability": None,
+                "wind_speed": current_data.get("wind_speed"),
+                "wind_direction": current_data.get("wind_direction"),
+                "wind_gust": current_data.get("wind_gust"),
+                "weather_code": current_data.get("weather_code"),
+                "weather_description": current_data.get("weather_description"),
+                "is_day": current_data.get("is_day", True),
+            })
+        except Exception as e:
+            print(f"Failed to save current Open-Meteo observation: {e}")
     
     return current_data, daily_data
 
@@ -1295,9 +1434,624 @@ def _get_weather_description(code):
     return weather_descriptions.get(code, "未知")
 
 
-# 挂载静态前端服务（放在最后，确保 API 路由优先匹配）
+# ============================================================
+# 用户认证 & 权限
+# ============================================================
+import socket as _socket
+import hashlib as _hashlib
+import secrets as _secrets
+import hmac as _hmac
+import base64 as _base64
+from datetime import datetime as _dt, timedelta as _td
+
+# 先定义路径常量，供后续路由使用
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+
+# ---- JWT 配置 ----
+_JWT_SECRET = os.getenv("WHEAT_JWT_SECRET", "wheat-fe-secret-key-2024")
+_JWT_ALGO = "HS256"
+_JWT_EXPIRE_HOURS = int(os.getenv("WHEAT_JWT_EXPIRE_HOURS", "24"))
+
+# 密码哈希使用 PBKDF2-HMAC-SHA256
+_PBKDF2_ITER = 120000
+_PBKDF2_ALGO = "sha256"
+_PASSWORD_SALT_LEN = 16
+
+_INITIAL_PASSWORD = "12345678"
+_INITIAL_USERS = [
+    # (username, real_name, role)
+    ("wuhuifeng", "吴会峰", "admin"),
+    ("lizhengguang", "李争光", "user"),
+    ("gaozhuo", "高茁", "user"),
+    ("shangwankuan", "尚万宽", "user"),
+    ("xushan", "徐姗", "user"),
+    # 技术员：仅手机端可登录，不能电脑端登录
+    ("zhaowei", "赵伟", "technician"),
+    ("qianfeng", "钱峰", "technician"),
+]
+_ROLE_NAMES = {"admin": "管理员", "user": "普通用户", "technician": "技术员"}
+_ROLE_VALID = set(_ROLE_NAMES)
+
+
+def _hash_password(password: str, salt_bytes: bytes | None = None) -> str:
+    """PBKDF2 密码哈希，返回 base64(salt) + '$' + base64(digest) 格式字符串。"""
+    if salt_bytes is None:
+        salt_bytes = _secrets.token_bytes(_PASSWORD_SALT_LEN)
+    digest = _hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode("utf-8"), salt_bytes, _PBKDF2_ITER)
+    salt_b64 = _base64.b64encode(salt_bytes).decode("ascii")
+    digest_b64 = _base64.b64encode(digest).decode("ascii")
+    return f"pbkdf2_sha256${_PBKDF2_ITER}${salt_b64}${digest_b64}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    """验证密码。"""
+    try:
+        parts = stored_hash.split("$")
+        if len(parts) != 4 or parts[0] != "pbkdf2_sha256":
+            return False
+        iterations = int(parts[1])
+        salt_bytes = _base64.b64decode(parts[2])
+        expected = _base64.b64decode(parts[3])
+        actual = _hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode("utf-8"), salt_bytes, iterations)
+        return _hmac.compare_digest(expected, actual)
+    except Exception:
+        return False
+
+
+def _jwt_b64(data: dict) -> str:
+    """手动生成 HS256 JWT（避免额外依赖 python-jose）。"""
+    import json as _json
+    import time as _time
+
+    header = {"alg": _JWT_ALGO, "typ": "JWT"}
+    payload = dict(data)
+    if "exp" not in payload:
+        payload["exp"] = int((_dt.utcnow() + _td(hours=_JWT_EXPIRE_HOURS)).timestamp())
+    if "iat" not in payload:
+        payload["iat"] = int(_dt.utcnow().timestamp())
+
+    def _b64url(b: bytes) -> str:
+        return _base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
+    header_json = _b64url(_json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_json = _b64url(_json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signing_input = f"{header_json}.{payload_json}".encode("utf-8")
+    sig = _hmac.new(_JWT_SECRET.encode("utf-8"), signing_input, _hashlib.sha256).digest()
+    sig_json = _b64url(sig)
+    return f"{header_json}.{payload_json}.{sig_json}"
+
+
+def _jwt_decode(token: str) -> dict | None:
+    """解码并验证 JWT，失败返回 None。"""
+    import json as _json
+    import time as _time
+
+    try:
+        header_b64, payload_b64, sig_b64 = token.split(".")
+    except ValueError:
+        return None
+
+    def _b64url_decode(s: str) -> bytes:
+        pad = "=" * (-len(s) % 4)
+        return _base64.urlsafe_b64decode(s + pad)
+
+    try:
+        header = json_mod.loads(_b64url_decode(header_b64))
+        payload = json_mod.loads(_b64url_decode(payload_b64))
+        signature = _b64url_decode(sig_b64)
+    except Exception:
+        return None
+
+    if header.get("alg") != _JWT_ALGO:
+        return None
+
+    signing_input = f"{header_b64}.{payload_b64}".encode("utf-8")
+    expected_sig = _hmac.new(_JWT_SECRET.encode("utf-8"), signing_input, _hashlib.sha256).digest()
+    if not _hmac.compare_digest(expected_sig, signature):
+        return None
+
+    exp = payload.get("exp")
+    if exp and int(_time.time()) > int(exp):
+        return None
+    return payload
+
+
+# ---- 建表 & 初始化用户 ----
+def _init_users():
+    """创建 users 表并初始化 5 个默认用户（幂等）。"""
+    conn_func = None
+    # 使用和 init_db 相同的数据库连接方式
+    import psycopg2 as _pg
+
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    conn.autocommit = False
+    try:
+        cur = conn.cursor()
+        # 1) 创建表（角色 CHECK 已包含 technician）
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sys_users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                real_name VARCHAR(50) NOT NULL,
+                role VARCHAR(20) NOT NULL DEFAULT 'user'
+                    CHECK (role IN ('admin','user','technician')),
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                first_login BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # 2) 兼容老库：如果 sys_users 的 role CHECK 还是旧版（只有 admin/user），用 DO block 扩展它
+        cur.execute(
+            """
+            SELECT 1
+              FROM pg_constraint c
+              JOIN pg_class      t ON t.oid = c.conrelid
+              JOIN pg_namespace  n ON n.oid = t.relnamespace
+             WHERE t.relname  = 'sys_users'
+               AND n.nspname  = current_schema()
+               AND c.contype  = 'c'                      -- CHECK 约束
+               AND pg_get_constraintdef(c.oid) NOT LIKE '%technician%'
+            LIMIT 1
+            """
+        )
+        if cur.fetchone() is not None:
+            # 找到旧 CHECK：删除所有 role 相关 CHECK 后重建（避免约束名未知）
+            cur.execute(
+                """
+                DO $$
+                DECLARE r RECORD;
+                BEGIN
+                  FOR r IN
+                    SELECT n.nspname, t.relname, c.conname
+                      FROM pg_constraint c
+                      JOIN pg_class     t ON t.oid = c.conrelid
+                      JOIN pg_namespace n ON n.oid = t.relnamespace
+                     WHERE t.relname  = 'sys_users'
+                       AND n.nspname  = current_schema()
+                       AND c.contype  = 'c'
+                       AND pg_get_constraintdef(c.oid) LIKE '%role%'
+                  LOOP
+                    EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I',
+                                   r.nspname, r.relname, r.conname);
+                  END LOOP;
+                END $$;
+                """
+            )
+            cur.execute(
+                """ALTER TABLE sys_users
+                     ADD CONSTRAINT sys_users_role_check
+                     CHECK (role IN ('admin','user','technician'))"""
+            )
+        # 3) 初始化用户（存在 → 重置密码/角色/first_login）
+        init_pw_hash = _hash_password(_INITIAL_PASSWORD)
+        for username, real_name, role in _INITIAL_USERS:
+            cur.execute("SELECT id FROM sys_users WHERE username = %s", (username,))
+            if cur.fetchone() is None:
+                cur.execute(
+                    """INSERT INTO sys_users (username, password_hash, real_name, role, first_login)
+                       VALUES (%s, %s, %s, %s, TRUE)""",
+                    (username, init_pw_hash, real_name, role),
+                )
+            else:
+                # 若初始用户已存在：始终重置为初始密码（12345678）+ 首次登录强制改密
+                # （开发/启动时保证约定账户可用，避免被测试改密后遗忘。普通用户创建的
+                #  非初始用户不受影响）
+                cur.execute(
+                    """UPDATE sys_users
+                          SET password_hash = %s,
+                              real_name     = %s,
+                              role          = %s,
+                              first_login   = TRUE,
+                              is_active     = TRUE,
+                              updated_at    = CURRENT_TIMESTAMP
+                        WHERE username = %s""",
+                    (init_pw_hash, real_name, role, username),
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# 在启动时初始化用户表
+try:
+    _init_users()
+    print("[auth] 用户表初始化完成")
+except Exception as e:
+    print(f"[auth] 用户表初始化警告: {e}")
+
+
+# ---- 请求模型 ----
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=1, max_length=100)
+    is_mobile: bool = False  # True=手机端登录（允许技术员登录）
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=100)
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
+class ResetPasswordRequest(BaseModel):
+    user_id: int
+    new_password: str = Field(default=_INITIAL_PASSWORD, min_length=6, max_length=100)
+
+
+class CreateUserRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    real_name: str = Field(..., min_length=1, max_length=50)
+    role: str = Field(default="user", pattern=r"^(admin|user|technician)$")
+    password: str = Field(default=_INITIAL_PASSWORD, min_length=6, max_length=100)
+
+
+class DeleteUserRequest(BaseModel):
+    user_id: int
+
+
+# ---- FastAPI 依赖：从 Authorization 头获取当前用户 ----
+from fastapi import Header as _Header, Depends as _Depends
+from typing import Optional as _Opt
+
+
+def _get_current_user(
+    authorization: _Opt[str] = _Header(default=None),
+) -> dict:
+    """解析 Authorization: Bearer <token>，返回用户信息（id, username, role, real_name, first_login）。"""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="未登录")
+    token = authorization.split(" ", 1)[1].strip()
+    payload = _jwt_decode(token)
+    if not payload or "uid" not in payload:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+
+    import psycopg2 as _pg2
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg2.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, password_hash, real_name, role, is_active, first_login "
+            "FROM sys_users WHERE id = %s",
+            (int(payload["uid"]),),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row or not row[5]:  # is_active
+        raise HTTPException(status_code=401, detail="用户不存在或已禁用")
+    return {
+        "id": row[0],
+        "username": row[1],
+        "password_hash": row[2],
+        "real_name": row[3],
+        "role": row[4],
+        "is_active": row[5],
+        "first_login": row[6],
+    }
+
+
+def _check_edit_permission(user: dict, owner: str | None, record_exists: bool = True) -> None:
+    """编辑权限校验。
+
+    record_exists=False：新建记录，任意登录用户可创建（归属在创建时写入）。
+    record_exists=True：管理员可编辑全部；无归属（updated_by 为空）的记录仅管理员可编辑；
+    否则仅本人（updated_by == 当前用户名）可编辑。
+    """
+    if user["role"] == "admin":
+        return
+    if not record_exists:
+        return
+    if not owner:
+        raise HTTPException(status_code=403, detail="该记录暂无归属，仅管理员可编辑")
+    if owner != user["username"]:
+        raise HTTPException(status_code=403, detail="无权限编辑他人录入的数据")
+
+
+def _user_from_row(row: tuple) -> dict:
+    """把 sys_users 查询行安全转为 dict（排除 password_hash）。"""
+    return {
+        "id": row[0],
+        "username": row[1],
+        "real_name": row[3],
+        "role": row[4],
+        "is_active": row[5],
+        "first_login": row[6],
+        "created_at": str(row[7]) if len(row) > 7 else None,
+        "updated_at": str(row[8]) if len(row) > 8 else None,
+    }
+
+
+def _get_admin(
+    authorization: _Opt[str] = _Header(default=None),
+) -> dict:
+    user = _get_current_user(authorization)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return user
+
+
+def _detect_lan_ip() -> str:
+    """检测本机局域网 IP 地址（用于二维码生成，手机扫码访问）"""
+    try:
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        # 连接到公共 DNS，操作系统会自动选择可用的网卡 IP
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+# 缓存 LAN IP（服务器生命周期内不变）
+_LAN_IP = _detect_lan_ip()
+
+# 移动端采集密码（可通过环境变量 MOBILE_PASSWORD 配置）
+import os as _os
+_MOBILE_PASSWORD = _os.getenv("MOBILE_PASSWORD", "wheat123")
+
+
+class PasswordVerifyRequest(BaseModel):
+    password: str
+
+
+# ============================================================
+# 用户认证 API
+# ============================================================
+@app.post("/api/v1/auth/login")
+async def api_login(req: LoginRequest):
+    """登录：返回 token + 用户信息（不含 password_hash）。
+
+    is_mobile=True  手机端登录（技术员允许）；
+    is_mobile=False 电脑端登录（技术员角色被拒绝，需走手机端）。
+    """
+    import psycopg2 as _pg
+
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, password_hash, real_name, role, is_active, first_login "
+            "FROM sys_users WHERE username = %s",
+            (req.username.strip(),),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row or not row[5]:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    if not _verify_password(req.password, row[2]):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    role = row[4]
+    # 技术员只能在手机端登录
+    if role == "technician" and not req.is_mobile:
+        raise HTTPException(
+            status_code=403,
+            detail="技术员账号仅限手机端登录使用，请在手机端登录（扫码进入）",
+        )
+
+    user_id = row[0]
+    token = _jwt_b64({"uid": user_id, "sub": str(user_id)})
+    return _success_response({
+        "access_token": token,
+        "token_type": "bearer",
+        "user": _user_from_row(row),
+    })
+
+
+@app.get("/api/v1/auth/me")
+async def api_get_me(authorization: _Opt[str] = _Header(default=None)):
+    """获取当前登录用户信息（用于会话恢复）。"""
+    user = _get_current_user(authorization)
+    safe = dict(user)
+    safe.pop("password_hash", None)
+    return _success_response(safe)
+
+
+@app.post("/api/v1/auth/change-password")
+async def api_change_password(
+    req: ChangePasswordRequest,
+    authorization: _Opt[str] = _Header(default=None),
+):
+    """修改自己的密码。"""
+    user = _get_current_user(authorization)
+    if not _verify_password(req.old_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="原密码错误")
+    if req.old_password == req.new_password:
+        raise HTTPException(status_code=400, detail="新密码不能与原密码相同")
+
+    new_hash = _hash_password(req.new_password)
+    import psycopg2 as _pg
+
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE sys_users SET password_hash = %s, first_login = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (new_hash, user["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return _success_response(message="密码修改成功")
+
+
+# ============================================================
+# 用户管理 API（仅管理员可用）
+# ============================================================
+@app.get("/api/v1/admin/users")
+async def api_admin_list_users(authorization: _Opt[str] = _Header(default=None)):
+    """列出全部用户（密码哈希不返回）。"""
+    _get_admin(authorization)
+    import psycopg2 as _pg
+
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, password_hash, real_name, role, is_active, first_login, created_at, updated_at "
+            "FROM sys_users ORDER BY id"
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return _success_response([_user_from_row(r) for r in rows])
+
+
+@app.post("/api/v1/admin/users")
+async def api_admin_create_user(
+    req: CreateUserRequest,
+    authorization: _Opt[str] = _Header(default=None),
+):
+    """创建用户（默认密码 12345678，首次登录强制修改）。"""
+    _get_admin(authorization)
+    import psycopg2 as _pg
+
+    pw_hash = _hash_password(req.password)
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        # 查重
+        cur.execute("SELECT id FROM sys_users WHERE username = %s", (req.username.strip(),))
+        if cur.fetchone() is not None:
+            raise HTTPException(status_code=400, detail="用户名已存在")
+        cur.execute(
+            """INSERT INTO sys_users (username, password_hash, real_name, role, first_login)
+               VALUES (%s, %s, %s, %s, TRUE) RETURNING *""",
+            (req.username.strip(), pw_hash, req.real_name.strip(), req.role),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return _success_response(_user_from_row(row), message="创建成功")
+
+
+@app.post("/api/v1/admin/users/reset-password")
+async def api_admin_reset_password(
+    req: ResetPasswordRequest,
+    authorization: _Opt[str] = _Header(default=None),
+):
+    """管理员重置普通用户密码（默认重置为 12345678，并开启首次登录强制修改）。"""
+    admin = _get_admin(authorization)
+
+    import psycopg2 as _pg
+
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, role, username FROM sys_users WHERE id = %s", (req.user_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        # 不能重置自己以外的管理员（安全规则：除非自己是管理员且目标为普通用户）
+        if row[1] == "admin" and row[0] != admin["id"]:
+            raise HTTPException(status_code=403, detail="不能重置其他管理员的密码")
+        new_hash = _hash_password(req.new_password)
+        cur.execute(
+            "UPDATE sys_users SET password_hash = %s, first_login = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (new_hash, req.user_id),
+        )
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return _success_response(message="密码已重置，用户首次登录需修改密码")
+
+
+@app.delete("/api/v1/admin/users/{user_id}")
+async def api_admin_delete_user(
+    user_id: int,
+    authorization: _Opt[str] = _Header(default=None),
+):
+    """删除用户。不能删除自己，不能删除仅剩的一个管理员。"""
+    admin = _get_admin(authorization)
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="不能删除自己")
+
+    import psycopg2 as _pg
+
+    conn_config = dict(DB_CONFIG)
+    conn_config.setdefault("client_encoding", "UTF8")
+    conn = _pg.connect(**conn_config)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, role FROM sys_users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if row[1] == "admin":
+            cur.execute("SELECT COUNT(*) FROM sys_users WHERE role = 'admin' AND is_active = TRUE")
+            cnt = cur.fetchone()[0]
+            if cnt <= 1:
+                raise HTTPException(status_code=400, detail="至少需要保留一个管理员")
+        cur.execute("DELETE FROM sys_users WHERE id = %s", (user_id,))
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return _success_response(message="用户已删除")
+
+
+@app.get("/api/v1/server-info")
+async def get_server_info():
+    """返回服务器信息（包括 LAN IP）供前端生成二维码"""
+    return {
+        "host": _LAN_IP,
+        "port": 8001,
+        "base_url": f"http://{_LAN_IP}:8001",
+    }
+
+
+@app.post("/api/v1/verify-password")
+async def verify_password(req: PasswordVerifyRequest):
+    """验证移动端采集密码"""
+    if req.password != _MOBILE_PASSWORD:
+        raise HTTPException(status_code=401, detail="密码错误")
+    return {"ok": True}
+
+
+@app.get("/mobile_entry")
+async def serve_mobile_entry(plot: str | None = None, plot_code: str | None = None, api: str | None = None):
+    """移动端数据录入页面"""
+    from fastapi.responses import FileResponse
+    mobile_html = FRONTEND_DIR / "mobile_entry.html"
+    if not mobile_html.exists():
+        raise HTTPException(status_code=404, detail="移动端页面未找到")
+    return FileResponse(str(mobile_html))
+
+
+# 挂载静态前端服务（放在最后，确保 API 路由优先匹配）
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 

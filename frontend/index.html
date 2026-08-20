@@ -252,10 +252,326 @@
     .form-row { flex-direction: column; }
   }
 </style>
+<style>
+/* ================= 认证 / 用户管理 样式 ================= */
+.auth-page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2ecc71 0%, #2980b9 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.auth-card {
+  width: 420px;
+  background: white;
+  border-radius: 16px;
+  padding: 40px 36px 32px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.auth-logo {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.auth-logo h1 { margin: 0; font-size: 24px; color: #2c3e50; }
+.auth-logo p  { margin: 6px 0 0; color: #7f8c8d; font-size: 13px; }
+.auth-logo .big-icon { font-size: 56px; display: block; margin-bottom: 8px; }
+.auth-err {
+  background: #fdecea; color: #c0392b;
+  padding: 10px 14px; border-radius: 8px; font-size: 13px;
+  margin-bottom: 16px; display: none;
+}
+.auth-err.show { display: block; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; color: #34495e; font-size: 13px; font-weight: 500; }
+.form-group input {
+  width: 100%; padding: 11px 12px; font-size: 14px;
+  border: 1px solid #dfe4ea; border-radius: 8px;
+  box-sizing: border-box; outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-group input:focus { border-color: #3498db; box-shadow: 0 0 0 3px rgba(52,152,219,0.15); }
+.input-with-toggle { position: relative; }
+.input-with-toggle input { padding-right: 76px; }
+.input-with-toggle .toggle-eye {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; cursor: pointer;
+  padding: 4px 8px; font-size: 14px; color: #7f8c8d;
+  border-radius: 4px;
+}
+.input-with-toggle .toggle-eye:hover { background: #ecf0f1; color: #2c3e50; }
+.auth-btn {
+  width: 100%; padding: 12px; font-size: 15px;
+  background: #3498db; color: white;
+  border: none; border-radius: 8px; cursor: pointer;
+  font-weight: 500; transition: background 0.15s;
+}
+.auth-btn:hover { background: #2980b9; }
+.auth-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+.auth-links {
+  margin-top: 18px; display: flex;
+  justify-content: space-between; align-items: center;
+  font-size: 13px; color: #7f8c8d;
+}
+.auth-links button {
+  background: none; border: none; cursor: pointer;
+  color: #3498db; padding: 0; font-size: 13px;
+}
+.auth-links button:hover { text-decoration: underline; }
+
+/* 首次登录强制改密遮罩 */
+.force-change-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.force-change-overlay .auth-card { width: 420px; }
+
+/* 顶部用户栏 */
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 24px; background: #f8f9fa;
+  border-bottom: 1px solid #ecf0f1; margin-bottom: 20px;
+  border-radius: 0;
+}
+.topbar-left h2 { margin: 0; font-size: 18px; color: #2c3e50; }
+.topbar-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.user-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 20px;
+  background: #ecf0f1; color: #2c3e50;
+}
+.user-chip .role-tag {
+  padding: 2px 6px; border-radius: 4px;
+  font-size: 11px; font-weight: 500;
+}
+.role-tag.admin      { background: #e74c3c; color: white; }
+.role-tag.user       { background: #95a5a6; color: white; }
+.role-tag.technician { background: #27ae60; color: white; }
+.topbar-btn {
+  padding: 6px 12px; border-radius: 6px;
+  border: 1px solid #dfe4ea; background: white;
+  cursor: pointer; font-size: 13px; color: #34495e;
+}
+.topbar-btn:hover { background: #ecf0f1; }
+.topbar-btn.danger { color: #c0392b; border-color: #fadbd8; }
+.topbar-btn.danger:hover { background: #fadbd8; }
+.topbar-btn.admin { color: #e67e22; border-color: #fad7a0; }
+.topbar-btn.admin:hover { background: #fad7a0; }
+
+/* 用户管理页面 */
+.user-admin-table {
+  width: 100%; border-collapse: collapse; font-size: 14px;
+}
+.user-admin-table th, .user-admin-table td {
+  padding: 10px 12px; text-align: left;
+  border-bottom: 1px solid #ecf0f1;
+}
+.user-admin-table th {
+  background: #f8f9fa; color: #2c3e50; font-weight: 600;
+}
+.user-admin-table tr:hover td { background: #fafbfc; }
+.action-btn {
+  padding: 4px 10px; margin-right: 6px;
+  border-radius: 4px; border: none; cursor: pointer; font-size: 12px;
+}
+.action-btn.reset { background: #3498db; color: white; }
+.action-btn.reset:hover { background: #2980b9; }
+.action-btn.del { background: #e74c3c; color: white; }
+.action-btn.del:hover { background: #c0392b; }
+.action-btn.del:disabled { background: #bdc3c7; cursor: not-allowed; }
+.add-user-btn {
+  padding: 8px 16px; background: #27ae60; color: white;
+  border: none; border-radius: 6px; cursor: pointer; font-size: 14px;
+  margin-bottom: 16px;
+}
+.add-user-btn:hover { background: #229954; }
+</style>
 </head>
 <body>
 <div id="app">
-  <div class="layout-container">
+  <!-- 登录 / 注册 页面 -->
+  <div v-if="!currentUser || !authToken" class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="big-icon">🌾</span>
+        <h1>纳米铁肥小麦试验记录系统</h1>
+        <p>请使用账户登录后继续</p>
+      </div>
+
+      <div :class="['auth-err', loginError ? 'show' : '']">{{ loginError }}</div>
+
+      <template v-if="!authView.showChangePwd">
+        <div class="form-group">
+          <label>用户名</label>
+          <input v-model.trim="authView.username" type="text"
+                 @keyup.enter="submitLogin"
+                 placeholder="例如 wuhuifeng" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <div class="input-with-toggle">
+            <input :type="authView.showPwd ? 'text' : 'password'"
+                   v-model="authView.password"
+                   @keyup.enter="submitLogin"
+                   placeholder="请输入密码" autocomplete="current-password" />
+            <button type="button" class="toggle-eye" @click="authView.showPwd = !authView.showPwd">
+              {{ authView.showPwd ? '🙈 隐藏' : '👁 显示' }}
+            </button>
+          </div>
+        </div>
+        <button class="auth-btn" @click="submitLogin" :disabled="loginLoading">
+          {{ loginLoading ? '登录中...' : '登录' }}
+        </button>
+        <div class="auth-links">
+          <span>初始密码：12345678</span>
+          <button @click="openChangePwdFromLogin">修改密码</button>
+        </div>
+      </template>
+
+      <!-- 登录页内的 修改密码 入口 -->
+      <template v-else>
+        <div class="form-group">
+          <label>用户名</label>
+          <input v-model.trim="authView.username" type="text"
+                 placeholder="例如 lizhengguang" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label>原密码</label>
+          <div class="input-with-toggle">
+            <input :type="authView.showOldPwd ? 'text' : 'password'"
+                   v-model="authView.oldPassword" placeholder="请输入原密码" />
+            <button type="button" class="toggle-eye" @click="authView.showOldPwd = !authView.showOldPwd">
+              {{ authView.showOldPwd ? '🙈' : '👁' }}
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>新密码（至少 6 位）</label>
+          <div class="input-with-toggle">
+            <input :type="authView.showNewPwd ? 'text' : 'password'"
+                   v-model="authView.newPassword" placeholder="请输入新密码" />
+            <button type="button" class="toggle-eye" @click="authView.showNewPwd = !authView.showNewPwd">
+              {{ authView.showNewPwd ? '🙈' : '👁' }}
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>确认新密码</label>
+          <div class="input-with-toggle">
+            <input :type="authView.showConfirmPwd ? 'text' : 'password'"
+                   v-model="authView.confirmPassword" placeholder="再次输入新密码" />
+            <button type="button" class="toggle-eye" @click="authView.showConfirmPwd = !authView.showConfirmPwd">
+              {{ authView.showConfirmPwd ? '🙈' : '👁' }}
+            </button>
+          </div>
+        </div>
+        <button class="auth-btn" @click="submitChangePwdFromLogin" :disabled="pwdLoading">
+          {{ pwdLoading ? '修改中...' : '修改密码并登录' }}
+        </button>
+        <div class="auth-links">
+          <button @click="authView.showChangePwd = false; loginError = '';">← 返回登录</button>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- 首次登录强制改密码遮罩 -->
+  <div v-if="currentUser && currentUser.first_login" class="force-change-overlay">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="big-icon">🔒</span>
+        <h1>首次登录请修改密码</h1>
+        <p>为了账户安全，请立即修改初始密码</p>
+      </div>
+      <div :class="['auth-err', changePwdError ? 'show' : '']">{{ changePwdError }}</div>
+      <div class="form-group">
+        <label>原密码（初始密码：12345678）</label>
+        <div class="input-with-toggle">
+          <input :type="forcePwd.showOld ? 'text' : 'password'"
+                 v-model="forcePwd.oldPwd" placeholder="请输入原密码" />
+          <button type="button" class="toggle-eye" @click="forcePwd.showOld = !forcePwd.showOld">
+            {{ forcePwd.showOld ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>新密码（至少 6 位）</label>
+        <div class="input-with-toggle">
+          <input :type="forcePwd.showNew ? 'text' : 'password'"
+                 v-model="forcePwd.newPwd" placeholder="请输入新密码" />
+          <button type="button" class="toggle-eye" @click="forcePwd.showNew = !forcePwd.showNew">
+            {{ forcePwd.showNew ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>确认新密码</label>
+        <div class="input-with-toggle">
+          <input :type="forcePwd.showConfirm ? 'text' : 'password'"
+                 v-model="forcePwd.confirmPwd" placeholder="再次输入新密码" />
+          <button type="button" class="toggle-eye" @click="forcePwd.showConfirm = !forcePwd.showConfirm">
+            {{ forcePwd.showConfirm ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <button class="auth-btn" @click="submitForceChangePwd" :disabled="forcePwd.loading">
+        {{ forcePwd.loading ? '修改中...' : '确认修改并进入系统' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- 修改密码模态框（已登录用户随时使用） -->
+  <div v-if="modal.type === 'change_pwd'" class="force-change-overlay" @mousedown="modalMaskDown" @click.self="closeChangePwdModal($event)">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="big-icon">🔑</span>
+        <h1>修改密码</h1>
+        <p>当前用户：{{ currentUser?.real_name }}（{{ currentUser?.username }}）</p>
+      </div>
+      <div :class="['auth-err', changePwdError ? 'show' : '']">{{ changePwdError }}</div>
+      <div class="form-group">
+        <label>原密码</label>
+        <div class="input-with-toggle">
+          <input :type="chgPwdModal.showOld ? 'text' : 'password'"
+                 v-model="chgPwdModal.oldPwd" placeholder="请输入原密码" />
+          <button type="button" class="toggle-eye" @click="chgPwdModal.showOld = !chgPwdModal.showOld">
+            {{ chgPwdModal.showOld ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>新密码（至少 6 位）</label>
+        <div class="input-with-toggle">
+          <input :type="chgPwdModal.showNew ? 'text' : 'password'"
+                 v-model="chgPwdModal.newPwd" placeholder="请输入新密码" />
+          <button type="button" class="toggle-eye" @click="chgPwdModal.showNew = !chgPwdModal.showNew">
+            {{ chgPwdModal.showNew ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>确认新密码</label>
+        <div class="input-with-toggle">
+          <input :type="chgPwdModal.showConfirm ? 'text' : 'password'"
+                 v-model="chgPwdModal.confirmPwd" placeholder="再次输入新密码" />
+          <button type="button" class="toggle-eye" @click="chgPwdModal.showConfirm = !chgPwdModal.showConfirm">
+            {{ chgPwdModal.showConfirm ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <button class="auth-btn" style="flex:1;background:#95a5a6;" @click="closeChangePwdModal">取消</button>
+        <button class="auth-btn" style="flex:1;" @click="submitModalChangePwd" :disabled="chgPwdModal.loading">
+          {{ chgPwdModal.loading ? '修改中...' : '确认修改' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主界面：登录后显示 -->
+  <div v-if="currentUser && authToken && !currentUser.first_login" class="layout-container">
     <!-- Sidebar -->
     <nav class="sidebar">
       <div class="logo">
@@ -299,6 +615,11 @@
           <span>🏆</span><span>品质数据</span>
         </button>
 
+        <div class="nav-section">数据查看</div>
+        <button class="nav-item" :class="{active: currentPage === 'data_view'}" @click="currentPage = 'data_view'">
+          <span>🔍</span><span>数据总览</span>
+        </button>
+
         <div class="nav-section">试验管理</div>
         <button class="nav-item" :class="{active: currentPage === 'fertilization'}" @click="currentPage = 'fertilization'">
           <span>💧</span><span>铁肥施用</span>
@@ -314,11 +635,133 @@
         <button class="nav-item" :class="{active: currentPage === 'export'}" @click="currentPage = 'export'">
           <span>📥</span><span>数据导出</span>
         </button>
+        <button v-if="currentUser?.role === 'admin'"
+                class="nav-item" :class="{active: currentPage === 'user_management'}" @click="currentPage = 'user_management'">
+          <span>👥</span><span>用户管理</span>
+        </button>
       </div>
     </nav>
     
     <!-- Main Content -->
     <main class="main-content">
+      <!-- Topbar 用户信息栏 -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <h2>🌾 纳米铁肥小麦试验记录系统</h2>
+        </div>
+        <div class="topbar-right">
+          <div class="user-chip">
+            <span>👤</span>
+            <span>{{ currentUser?.real_name }}</span>
+            <span class="role-tag" :class="currentUser?.role">
+              {{ currentUser?.role === 'admin' ? '管理员'
+                 : currentUser?.role === 'technician' ? '技术员'
+                 : '普通用户' }}
+            </span>
+          </div>
+          <button v-if="currentUser?.role === 'admin'"
+                  class="topbar-btn admin" @click="currentPage = 'user_management'">
+            👥 用户管理
+          </button>
+          <button class="topbar-btn" @click="openChangePwdFromTopbar">🔑 修改密码</button>
+          <button class="topbar-btn danger" @click="logout">🚪 退出登录</button>
+        </div>
+      </div>
+
+      <!-- 用户管理页面内容 -->
+      <div v-if="currentPage === 'user_management'">
+        <div class="page-header">
+          <h2>👥 用户管理</h2>
+          <p style="color:#666;margin-top:4px;">管理员专属：增加/删除用户、重置普通用户密码</p>
+        </div>
+        <button class="add-user-btn" @click="openAddUserModal">➕ 新增用户</button>
+
+        <!-- 新增用户弹窗 -->
+        <div v-if="modal.type === 'add_user'" class="force-change-overlay" @mousedown="modalMaskDown" @click.self="closeAddUserModal($event)">
+          <div class="auth-card">
+            <div class="auth-logo">
+              <span class="big-icon">➕</span>
+              <h1>新增用户</h1>
+              <p>初始密码 12345678，首次登录强制修改</p>
+            </div>
+            <div :class="['auth-err', addUserError ? 'show' : '']">{{ addUserError }}</div>
+            <div class="form-group">
+              <label>用户名（英文字母）</label>
+              <input v-model.trim="addUserForm.username" type="text" placeholder="如 zhangsan" />
+            </div>
+            <div class="form-group">
+              <label>姓名</label>
+              <input v-model.trim="addUserForm.realName" type="text" placeholder="如 张三" />
+            </div>
+            <div class="form-group">
+              <label>角色</label>
+              <select v-model="addUserForm.role" style="width:100%;padding:11px 12px;border:1px solid #dfe4ea;border-radius:8px;">
+                <option value="user">普通用户（电脑端+手机端均可登录）</option>
+                <option value="technician">技术员（仅限手机端采集）</option>
+                <option value="admin">管理员（电脑端+手机端+用户管理）</option>
+              </select>
+              <p style="color:#86868b;font-size:12px;margin-top:4px;">
+                ※ 技术员不能在电脑端登录，只允许在手机扫码进入后做田间采集
+              </p>
+            </div>
+            <div class="form-group">
+              <label>初始密码（留空则默认 12345678）</label>
+              <div class="input-with-toggle">
+                <input :type="addUserForm.showPwd ? 'text' : 'password'"
+                       v-model="addUserForm.password" placeholder="12345678" />
+                <button type="button" class="toggle-eye" @click="addUserForm.showPwd = !addUserForm.showPwd">
+                  {{ addUserForm.showPwd ? '🙈' : '👁' }}
+                </button>
+              </div>
+            </div>
+            <div style="display:flex; gap:12px;">
+              <button class="auth-btn" style="flex:1;background:#95a5a6;" @click="closeAddUserModal">取消</button>
+              <button class="auth-btn" style="flex:1;" @click="submitAddUser" :disabled="addUserForm.loading">
+                {{ addUserForm.loading ? '创建中...' : '创建用户' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <table class="user-admin-table">
+          <thead>
+            <tr>
+              <th>ID</th><th>用户名</th><th>姓名</th><th>角色</th>
+              <th>状态</th><th>首次登录</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in adminUserList" :key="u.id">
+              <td>{{ u.id }}</td>
+              <td>{{ u.username }}</td>
+              <td>{{ u.real_name }}</td>
+              <td>
+                <span class="role-tag" :class="u.role">
+                  {{ u.role === 'admin' ? '管理员'
+                     : u.role === 'technician' ? '技术员'
+                     : '普通用户' }}
+                </span>
+              </td>
+              <td>{{ u.is_active ? '启用' : '禁用' }}</td>
+              <td>{{ u.first_login ? '是' : '否' }}</td>
+              <td>
+                <button class="action-btn reset" @click="resetUserPassword(u)"
+                        :disabled="u.role === 'admin' && u.id !== currentUser?.id">
+                  🔄 重置密码
+                </button>
+                <button class="action-btn del"
+                        :disabled="u.role === 'admin' || u.id === currentUser?.id"
+                        @click="deleteUser(u)">
+                  🗑 删除
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!adminUserList.length" style="padding:40px;text-align:center;color:#95a5a6;">加载中...</div>
+      </div>
+
+      <!-- 其他旧页面（在当前 main 外） -->
       <!-- Dashboard -->
       <div v-if="currentPage === 'dashboard'">
         <div class="page-header">
@@ -342,7 +785,9 @@
               <div class="stat-icon">{{ getStatIcon(key) }}</div>
               <div class="value">{{ stat.filled || 0 }}</div>
               <div class="label">{{ tableNames[key] || key }}</div>
-              <div class="progress"><div class="progress-fill" :style="{width: (stat.pct || 0) + '%'}"></div></div>
+              <template v-if="typeof stat.pct === 'number'">
+                <div class="progress"><div class="progress-fill" :style="{width: (stat.pct || 0) + '%'}"></div></div>
+              </template>
             </div>
           </div>
         </div>
@@ -369,12 +814,18 @@
                 <td style="padding:10px;border-bottom:1px solid #eee;">{{ treatment.name }}</td>
                 <td v-for="tbl in ['soil_data','phenology','emergence','agronomic_traits','physiological','yield_data','quality_data']" :key="tbl" style="padding:10px;border-bottom:1px solid #eee;text-align:center;">
                   <span class="tag" :class="getTagClass(dashboardData.treatment_matrix[treatment.code]?.[tbl])">
-                    {{ dashboardData.treatment_matrix[treatment.code]?.[tbl] || '—' }}
+                    {{ getMatrixCell(dashboardData.treatment_matrix[treatment.code]?.[tbl]) }}
                   </span>
                 </td>
               </tr>
             </tbody>
           </table>
+          <div style="margin-top:10px;font-size:12px;color:#7f8c8d;display:flex;gap:14px;flex-wrap:wrap;">
+            <span><span class="tag tag-success">≥80%</span> 完成良好</span>
+            <span><span class="tag tag-warning">50–79%</span> 部分完成</span>
+            <span><span class="tag tag-info">&lt;50%</span> 待录入</span>
+            <span>百分比 = 已录入小区 ÷ 该处理小区总数（土壤按播前+收获后两阶段）</span>
+          </div>
         </div>
         
         <div class="card" v-if="dashboardData && dashboardData.recent_operations?.length">
@@ -908,7 +1359,107 @@
           </div>
         </div>
       </div>
-      
+
+      <!-- 数据总览（数据查看） -->
+      <div v-if="currentPage === 'data_view'">
+        <div class="page-header">
+          <h2>{{ currentPageTitles['data_view'] }}</h2>
+          <p style="color:#666;margin-top:4px;">{{ currentPageDescriptions['data_view'] }}</p>
+        </div>
+
+        <div class="card">
+          <div class="form-row">
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">基地</label>
+              <select v-model="dataViewBase" @change="loadDataView()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">全部基地</option>
+                <option v-for="base in bases" :key="base.base_code" :value="base.base_code">{{ base.base_name }}</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">数据表</label>
+              <select v-model="dataViewTable" @change="loadDataView()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                <option value="">全部数据表</option>
+                <option v-for="(label, key) in dataViewTables" :key="key" :value="key">{{ label }}</option>
+              </select>
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;margin-bottom:4px;font-weight:bold;">搜索（小区/处理/录入人）</label>
+              <input v-model.trim="dataViewKeyword" placeholder="输入关键字过滤" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card" v-if="filteredDataViewRecords.length">
+          <h3 style="margin-bottom:16px;">📊 已录入数据（{{ filteredDataViewRecords.length }} 条）</h3>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead>
+                <tr style="background:#f5f7fa;">
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">基地</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">小区</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">处理</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">数据表</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">录入人</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">更新时间</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">内容摘要</th>
+                  <th style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in filteredDataViewRecords" :key="r.table_name + '-' + r.record_id">
+                  <td style="padding:8px;border-bottom:1px solid #eee;">{{ r.plot_base_code || r.base_code }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;">{{ r.plot_code }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;">{{ r.treatment }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;">{{ dataViewTables[r.table_name] }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;">{{ r.updated_by || '—' }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;color:#888;">{{ fmtTime(r.updated_at) }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;color:#666;">{{ dataViewSummary(r) }}</td>
+                  <td style="padding:8px;border-bottom:1px solid #eee;">
+                    <button v-if="r.editable" @click="openDataEdit(r)"
+                            style="padding:6px 12px;background:#1a73e8;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">✏️ 编辑</button>
+                    <span v-else style="color:#aaa;font-size:12px;">仅本人/管理员</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" v-else>
+          <p style="color:#888;padding:12px 0;">暂无可显示的数据。</p>
+        </div>
+
+        <!-- 编辑数据弹窗 -->
+        <div v-if="dataEdit.show" class="force-change-overlay" @mousedown="modalMaskDown" @click.self="closeDataEdit($event)">
+          <div class="auth-card" style="max-width:720px;width:94%;max-height:82vh;overflow-y:auto;">
+            <div class="auth-logo" style="margin-bottom:12px;">
+              <span class="big-icon">✏️</span>
+              <h1 style="font-size:18px;margin:8px 0 4px;">编辑数据</h1>
+              <p style="color:#666;font-size:13px;">
+                {{ dataEditTableLabel }} / {{ dataEdit.record?.plot_code }}
+                <span style="color:#aaa;">（归属：{{ dataEdit.record?.updated_by || '—' }}）</span>
+              </p>
+            </div>
+            <div v-for="(group, gIdx) in dataEditFields" :key="gIdx" style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+              <div v-for="(field, fIdx) in group" :key="field.key" style="flex:1;min-width:140px;">
+                <label style="display:block;margin-bottom:4px;font-size:13px;">{{ field.label }}</label>
+                <input v-if="field.type === 'number'" type="number" :step="field.step || '0.01'" :placeholder="field.placeholder"
+                       v-model.number="dataEdit.formData[field.key]"
+                       style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+                <input v-else-if="field.type === 'date'" type="date" v-model="dataEdit.formData[field.key]"
+                       style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+                <input v-else type="text" :placeholder="field.placeholder" v-model="dataEdit.formData[field.key]"
+                       style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" />
+              </div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:12px;">
+              <button @click="saveDataEdit()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">💾 保存</button>
+              <button @click="closeDataEdit()" style="padding:10px 24px;background:#f5f5f5;color:#666;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:14px;">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 铁肥施用记录 -->
       <div v-if="currentPage === 'fertilization'">
         <div class="page-header">
@@ -1184,7 +1735,7 @@
   </div>
   
   <!-- Modals -->
-  <div v-if="modal.show" class="modal-mask" @click.self="modal.show = false">
+  <div v-if="modal.show" class="modal-mask" @mousedown="modalMaskDown" @click.self="closeModalIfNotDrag">
     <div class="modal-content">
       <div class="modal-header">
         <h3>{{ modal.title }}</h3>
@@ -1349,7 +1900,13 @@
           <img :src="qrCodeDataUrl" v-if="qrCodeDataUrl" />
           <p>{{ qrPlot?.plot_code }}</p>
           <p style="font-size:11px;color:#95a5a6;">扫描二维码进入手机录入</p>
-          <a :href="qrUrl" target="_blank" style="color:#3498db;font-size:12px;">{{ qrUrl }}</a>
+          <a :href="qrUrl" target="_blank" style="color:#3498db;font-size:12px;word-break:break-all;">{{ qrUrl }}</a>
+          <p v-if="serverInfo.host === '127.0.0.1'" style="font-size:11px;color:#e74c3c;margin-top:8px;">
+            ⚠️ 无法检测到局域网 IP，请确保手机和电脑在同一局域网，或手动启动服务
+          </p>
+          <p style="font-size:11px;color:#7f8c8d;margin-top:6px;">
+            💡 手机需连接同一 WiFi，默认密码: wheat123
+          </p>
         </div>
       </div>
       
@@ -1553,7 +2110,7 @@
       </div>
     </div>
   </div>
-</div>
+</div> <!-- / app -->
 
 <script>
 const { createApp, ref, computed, onMounted, reactive, watch, nextTick } = Vue;
@@ -1561,26 +2118,354 @@ const { createApp, ref, computed, onMounted, reactive, watch, nextTick } = Vue;
 const app = createApp({
   setup() {
     const API_BASE = '';
-    
-    // Navigation
+    const AUTH_KEY = 'wheat_fe_auth_v1';
+
+    // ============================================================
+    // 认证 & 用户 状态
+    // ============================================================
+    const authToken = ref(localStorage.getItem(AUTH_KEY + '_token') || '');
+    const currentUser = ref(JSON.parse(localStorage.getItem(AUTH_KEY + '_user') || 'null'));
+
+    function saveAuth(token, userObj) {
+      authToken.value = token;
+      currentUser.value = userObj;
+      localStorage.setItem(AUTH_KEY + '_token', token);
+      localStorage.setItem(AUTH_KEY + '_user', JSON.stringify(userObj));
+    }
+    function clearAuth() {
+      authToken.value = '';
+      currentUser.value = null;
+      localStorage.removeItem(AUTH_KEY + '_token');
+      localStorage.removeItem(AUTH_KEY + '_user');
+    }
+
+    // 登录表单视图状态
+    const authView = reactive({
+      username: '',
+      password: '',
+      oldPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+      showPwd: false,
+      showOldPwd: false,
+      showNewPwd: false,
+      showConfirmPwd: false,
+      showChangePwd: false,
+    });
+    const loginError = ref('');
+    const loginLoading = ref(false);
+    const pwdLoading = ref(false);
+    const changePwdError = ref('');
+
+    // 首次登录强制改密码
+    const forcePwd = reactive({
+      oldPwd: '', newPwd: '', confirmPwd: '',
+      showOld: false, showNew: false, showConfirm: false,
+      loading: false,
+    });
+
+    // 修改密码模态框（已登录状态）
+    const chgPwdModal = reactive({
+      oldPwd: '', newPwd: '', confirmPwd: '',
+      showOld: false, showNew: false, showConfirm: false,
+      loading: false,
+    });
+
+    // 新增用户表单
+    const addUserForm = reactive({
+      username: '', realName: '', password: '', role: 'user',
+      showPwd: false, loading: false,
+    });
+    const addUserError = ref('');
+    const adminUserList = ref([]);
+
+    async function authFetch(url, options = {}) {
+      const headers = Object.assign({}, options.headers || {});
+      if (authToken.value && !headers['Authorization']) {
+        headers['Authorization'] = 'Bearer ' + authToken.value;
+      }
+      if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      const res = await fetch(url, Object.assign({}, options, { headers }));
+      if (res.status === 401) {
+        clearAuth();
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = json && json.detail ? json.detail : ('请求失败 ' + res.status);
+        throw new Error(detail);
+      }
+      return json && ('data' in json) ? json.data : json;
+    }
+
+    async function submitLogin() {
+      loginError.value = '';
+      if (!authView.username || !authView.password) {
+        loginError.value = '请输入用户名和密码';
+        return;
+      }
+      loginLoading.value = true;
+      try {
+        const data = await authFetch('/api/v1/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: authView.username,
+            password: authView.password,
+          }),
+        });
+        saveAuth(data.access_token, data.user);
+        authView.password = '';
+        // 如果用户首次登录，强制改密码遮罩会自动显示
+      } catch (e) {
+        loginError.value = e.message || '登录失败';
+      } finally {
+        loginLoading.value = false;
+      }
+    }
+
+    function openChangePwdFromLogin() {
+      if (!authView.username && authView.showChangePwd === false) {
+        // 从登录页点击改密码，保留已输入的用户名
+      }
+      loginError.value = '';
+      authView.showChangePwd = true;
+    }
+
+    async function _doChangePasswordFlow(username, oldPwd, newPwd, confirmPwd) {
+      if (!oldPwd) throw new Error('请输入原密码');
+      if (!newPwd || newPwd.length < 6) throw new Error('新密码至少 6 位');
+      if (newPwd !== confirmPwd) throw new Error('两次输入的新密码不一致');
+      if (oldPwd === newPwd) throw new Error('新密码不能与原密码相同');
+
+      // 1. 修改密码
+      const tmpTokenState = authToken.value;
+      const tmpUserState = currentUser.value;
+
+      try {
+        // 如果当前未登录，先尝试用临时的用户名/密码换取 token
+        let useToken = authToken.value;
+        if (!useToken && username) {
+          const loginData = await (async () => {
+            const res = await fetch('/api/v1/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password: oldPwd }),
+            });
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.detail || '用户名或原密码错误');
+            return j.data;
+          })();
+          useToken = loginData.access_token;
+          // 保存登录态
+          saveAuth(useToken, loginData.user);
+        }
+        await authFetch('/api/v1/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            old_password: oldPwd,
+            new_password: newPwd,
+          }),
+        });
+        // 修改成功后更新用户 first_login=false
+        if (currentUser.value) {
+          currentUser.value = Object.assign({}, currentUser.value, { first_login: false });
+          localStorage.setItem(AUTH_KEY + '_user', JSON.stringify(currentUser.value));
+        }
+        return true;
+      } catch (e) {
+        throw e;
+      }
+    }
+
+    async function submitChangePwdFromLogin() {
+      changePwdError.value = '';
+      pwdLoading.value = true;
+      try {
+        await _doChangePasswordFlow(
+          authView.username.trim(),
+          authView.oldPassword,
+          authView.newPassword,
+          authView.confirmPassword,
+        );
+        alert('✅ 密码修改成功，已自动登录');
+        // 切换回登录视图
+        authView.showChangePwd = false;
+        authView.oldPassword = authView.newPassword = authView.confirmPassword = '';
+      } catch (e) {
+        changePwdError.value = e.message || '修改失败';
+      } finally {
+        pwdLoading.value = false;
+      }
+    }
+
+    async function submitForceChangePwd() {
+      changePwdError.value = '';
+      forcePwd.loading = true;
+      try {
+        await _doChangePasswordFlow(
+          currentUser.value?.username,
+          forcePwd.oldPwd,
+          forcePwd.newPwd,
+          forcePwd.confirmPwd,
+        );
+        forcePwd.oldPwd = forcePwd.newPwd = forcePwd.confirmPwd = '';
+        alert('✅ 密码修改成功，欢迎使用系统');
+      } catch (e) {
+        changePwdError.value = e.message || '修改失败';
+      } finally {
+        forcePwd.loading = false;
+      }
+    }
+
+    function openChangePwdFromTopbar() {
+      changePwdError.value = '';
+      chgPwdModal.oldPwd = ''; chgPwdModal.newPwd = ''; chgPwdModal.confirmPwd = '';
+      chgPwdModal.showOld = false; chgPwdModal.showNew = false; chgPwdModal.showConfirm = false;
+      modal.type = 'change_pwd';
+      modal.title = '修改密码';
+      modal.show = true;
+    }
+    function closeChangePwdModal(e) {
+      if (e && wasModalDrag(e)) return;
+      modal.show = false;
+      modal.type = '';
+      changePwdError.value = '';
+    }
+    async function submitModalChangePwd() {
+      changePwdError.value = '';
+      chgPwdModal.loading = true;
+      try {
+        await _doChangePasswordFlow(
+          currentUser.value?.username,
+          chgPwdModal.oldPwd,
+          chgPwdModal.newPwd,
+          chgPwdModal.confirmPwd,
+        );
+        chgPwdModal.loading = false;
+        alert('✅ 密码修改成功');
+        closeChangePwdModal();
+      } catch (e) {
+        chgPwdModal.loading = false;
+        changePwdError.value = e.message || '修改失败';
+      }
+    }
+
+    function logout() {
+      if (!confirm('确定退出登录？')) return;
+      clearAuth();
+      currentPage.value = 'dashboard';
+      authView.showChangePwd = false;
+      loginError.value = '';
+    }
+
+    // ============================================================
+    // 用户管理（管理员）
+    // ============================================================
+    async function loadAdminUsers() {
+      try {
+        adminUserList.value = await authFetch('/api/v1/admin/users', { method: 'GET' });
+      } catch (e) {
+        console.warn(e.message || '加载用户列表失败');
+      }
+    }
+    function openAddUserModal() {
+      addUserError.value = '';
+      addUserForm.username = ''; addUserForm.realName = ''; addUserForm.password = '';
+      addUserForm.role = 'user'; addUserForm.showPwd = false; addUserForm.loading = false;
+      modal.type = 'add_user';
+      modal.title = '新增用户';
+      modal.show = true;
+    }
+    function closeAddUserModal(e) {
+      if (e && wasModalDrag(e)) return;
+      modal.show = false; modal.type = ''; addUserError.value = '';
+    }
+    async function submitAddUser() {
+      addUserError.value = '';
+      if (!addUserForm.username.trim()) { addUserError.value = '请输入用户名'; return; }
+      if (!addUserForm.realName.trim()) { addUserError.value = '请输入姓名'; return; }
+      addUserForm.loading = true;
+      try {
+        const body = {
+          username: addUserForm.username.trim(),
+          real_name: addUserForm.realName.trim(),
+          role: addUserForm.role,
+        };
+        if (addUserForm.password) body.password = addUserForm.password;
+        await authFetch('/api/v1/admin/users', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        alert('✅ 创建成功');
+        closeAddUserModal();
+        loadAdminUsers();
+      } catch (e) {
+        addUserError.value = e.message || '创建失败';
+      } finally {
+        addUserForm.loading = false;
+      }
+    }
+    async function resetUserPassword(u) {
+      if (!confirm(`确认将 ${u.real_name}（${u.username}）的密码重置为 12345678？\n用户首次登录后会被强制修改密码。`)) return;
+      try {
+        await authFetch('/api/v1/admin/users/reset-password', {
+          method: 'POST',
+          body: JSON.stringify({ user_id: u.id }),
+        });
+        alert('✅ 已重置为 12345678');
+        loadAdminUsers();
+      } catch (e) {
+        alert('❌ ' + (e.message || '重置失败'));
+      }
+    }
+    async function deleteUser(u) {
+      if (!confirm(`确认删除用户 ${u.real_name}（${u.username}）？`)) return;
+      try {
+        await authFetch(`/api/v1/admin/users/${u.id}`, { method: 'DELETE' });
+        alert('✅ 已删除');
+        loadAdminUsers();
+      } catch (e) {
+        alert('❌ ' + (e.message || '删除失败'));
+      }
+    }
+
+    // Navigation & 全局页面切换（必须先定义，后面的 watch 才能引用到）
     const currentPage = ref('dashboard');
+
+    // 用户管理页面加载列表
+    watch(() => currentPage.value, (p) => {
+      if (p === 'user_management' && currentUser.value?.role === 'admin') {
+        loadAdminUsers();
+      }
+    });
+
+    // 服务器信息（包含 LAN IP，用于生成手机可访问的二维码）
+    const serverInfo = ref({ host: 'localhost', port: 8001, base_url: 'http://localhost:8001' });
+    
     const currentPageTitles = {
+      dashboard: '🏠 总览',
       soil: '🪣 土壤数据',
       phenology: '📅 物候期',
       emergence: '🌱 出苗调查',
       agronomic: '🌿 农艺性状',
       physiological: '🔬 生理指标',
       yield: '🌾 产量数据',
-      quality: '🏆 品质数据'
+      quality: '🏆 品质数据',
+      data_view: '🔍 数据总览',
+      user_management: '🛡️ 用户管理',
     };
     const currentPageDescriptions = {
+      dashboard: '系统运行概况与快捷入口',
       soil: '土壤基础理化性质测定',
       phenology: '小麦生长发育期记录',
       emergence: '出苗情况调查',
       agronomic: '农艺性状测定',
       physiological: '生理生化指标测定',
       yield: '产量构成因素测定',
-      quality: '籽粒品质测定'
+      quality: '籽粒品质测定',
+      data_view: '查询/检查各基地已录入数据；编辑权限：自己录入的可改，管理员可改全部',
+      user_management: '管理员维护用户账号与密码',
     };
     
     // Data
@@ -1619,6 +2504,12 @@ const app = createApp({
       const selectedDataBase = ref('');
     const selectedPlotCode = ref('');
     const soilPhase = ref('播前');
+    // 「数据总览」状态
+    const dataViewBase = ref('');
+    const dataViewTable = ref('');
+    const dataViewKeyword = ref('');
+    const dataViewRecords = ref([]);
+    const dataEdit = reactive({ show: false, table: '', record: null, formData: {} });
     const operationBase = ref('');
     
     // Forms
@@ -1655,6 +2546,24 @@ const app = createApp({
     
     // Modals
     const modal = reactive({ show: false, type: '', title: '', editTarget: null });
+    let modalMaskOrigin = null;   // 记录遮罩按下位置，用于区分「拖动」与「点击关闭」
+    function modalMaskDown(e) {
+      modalMaskOrigin = { x: e.clientX, y: e.clientY };
+    }
+    // 从输入框按下后向左/向右拖拽到遮罩释放时，返回 true 表示「是拖动」，不应关闭弹窗
+    function wasModalDrag(e) {
+      if (modalMaskOrigin &&
+          (Math.abs(e.clientX - modalMaskOrigin.x) > 5 || Math.abs(e.clientY - modalMaskOrigin.y) > 5)) {
+        modalMaskOrigin = null;
+        return true;
+      }
+      modalMaskOrigin = null;
+      return false;
+    }
+    function closeModalIfNotDrag(e) {
+      if (wasModalDrag(e)) return;
+      modal.show = false;
+    }
     const qrCodeDataUrl = ref('');
     const qrPlot = ref(null);
     const qrUrl = ref('');
@@ -1891,57 +2800,97 @@ const app = createApp({
       }
     
     // Form field definitions
-    const currentFormFields = computed(() => {
-      // 通用采样元数据（采样日期/采样人/采样方法）行 - 用于采样类表
-      const samplingMetaRow = [
-        { key: 'sampling_date', label: '采样日期', type: 'date' },
-        { key: 'sampler', label: '采样人', type: 'text' },
-        { key: 'sampling_method', label: '采样方法', type: 'text' },
-      ];
-      const fields = {
-        soil: [
-          [{ key: 'ph', label: 'pH', type: 'number', step: '0.1' }, { key: 'fe_available', label: '有效铁(mg/kg)', type: 'number', step: '0.1' }, { key: 'fe_total', label: '全铁(g/kg)', type: 'number', step: '0.1' }],
-          [{ key: 'organic_matter', label: '有机质(g/kg)', type: 'number', step: '0.1' }, { key: 'p_available', label: '有效磷(mg/kg)', type: 'number', step: '0.1' }, { key: 'k_available', label: '速效钾(mg/kg)', type: 'number', step: '0.1' }],
-          [{ key: 'cec', label: 'CEC(cmol/kg)', type: 'number', step: '0.1' }, { key: 'bulk_density', label: '容重(g/cm³)', type: 'number', step: '0.01' }],
-          samplingMetaRow,
-        ],
-        phenology: [
-          [{ key: 'sowing', label: '播种期', type: 'date' }, { key: 'emergence', label: '出苗期', type: 'date' }, { key: 'tillering', label: '分蘖期', type: 'date' }],
-          [{ key: 'overwinter', label: '越冬期', type: 'date' }, { key: 'regreening', label: '返青期', type: 'date' }, { key: 'jointing', label: '拔节期', type: 'date' }],
-          [{ key: 'heading', label: '抽穗期', type: 'date' }, { key: 'flowering', label: '开花期', type: 'date' }, { key: 'maturity', label: '成熟期', type: 'date' }]
-        ],
-        emergence: [
-          [{ key: 'seeds_sown', label: '播种粒数', type: 'number' }, { key: 'emerged_7d', label: '7天出苗数', type: 'number' }, { key: 'rate_7d', label: '7天出苗率(%) 自动算', type: 'number', step: '0.1', readonly: true }],
-          [{ key: 'emerged_14d', label: '14天出苗数', type: 'number' }, { key: 'rate_14d', label: '14天出苗率(%) 自动算', type: 'number', step: '0.1', readonly: true }, { key: 'basic_seedlings', label: '基本苗数', type: 'number', step: '0.1' }],
-          samplingMetaRow,
-        ],
-        agronomic: [
-          [{ key: 'tillers_prewinter', label: '越冬前分蘖', type: 'number', step: '0.1' }, { key: 'tillers_postregreen', label: '返青后分蘖', type: 'number', step: '0.1' }, { key: 'tillers_jointing', label: '拔节期分蘖', type: 'number', step: '0.1' }],
-          [{ key: 'plant_height', label: '株高(cm)', type: 'number', step: '0.1' }, { key: 'lai_jointing', label: '拔节期LAI', type: 'number', step: '0.1' }, { key: 'lai_heading', label: '抽穗期LAI', type: 'number', step: '0.1' }],
-          [{ key: 'dry_weight_jointing', label: '拔节期干重(g/株)', type: 'number', step: '0.1' }, { key: 'dry_weight_heading', label: '抽穗期干重(g/株)', type: 'number', step: '0.1' }, { key: 'dry_weight_maturity', label: '成熟期干重(g/株)', type: 'number', step: '0.1' }],
-          samplingMetaRow,
-        ],
-        physiological: [
-          [{ key: 'spad_jointing', label: '拔节期SPAD', type: 'number', step: '0.1' }, { key: 'spad_heading', label: '抽穗期SPAD', type: 'number', step: '0.1' }, { key: 'spad_filling', label: '灌浆期SPAD', type: 'number', step: '0.1' }],
-          [{ key: 'photo_rate_heading', label: '抽穗期光合速率', type: 'number', step: '0.01' }, { key: 'photo_rate_filling', label: '灌浆期光合速率', type: 'number', step: '0.01' }, { key: 'active_fe_jointing', label: '拔节期活性铁', type: 'number', step: '0.1' }],
-          [{ key: 'active_fe_filling', label: '灌浆期活性铁', type: 'number', step: '0.1' }, { key: 'cat', label: 'CAT活性', type: 'number', step: '0.01' }, { key: 'pod', label: 'POD活性', type: 'number', step: '0.01' }],
-          samplingMetaRow,
-        ],
-        yield: [
-          [{ key: 'spikes_per_mu', label: '亩穗数(万穗/亩)', type: 'number', step: '0.1' }, { key: 'grains_per_spike', label: '穗粒数(粒/穗)', type: 'number', step: '0.1' }, { key: 'thousand_grain_wt_1', label: '千粒重第1组(g)', type: 'number', step: '0.01' }],
-          [{ key: 'thousand_grain_wt_2', label: '千粒重第2组(g)', type: 'number', step: '0.01' }, { key: 'actual_yield', label: '实际产量(kg/亩)', type: 'number', step: '0.1' }, { key: 'harvest_index', label: '收获指数', type: 'number', step: '0.01' }],
-          [{ key: 'harvest_date', label: '收获日期', type: 'date' }, { key: 'harvest_area', label: '实收面积(m²)', type: 'number', step: '0.1' }, { key: 'moisture_content', label: '含水率(%)', type: 'number', step: '0.1' }],
-          [{ key: 'standardized_yield', label: '标准产量(13%含水率) 自动算', type: 'number', step: '0.1', readonly: true }],
-          samplingMetaRow,
-        ],
-        quality: [
-          [{ key: 'grain_protein', label: '籽粒蛋白质(%)', type: 'number', step: '0.1' }, { key: 'wet_gluten', label: '湿面筋(%)', type: 'number', step: '0.1' }, { key: 'sds_sedimentation', label: 'SDS沉降值(mL)', type: 'number', step: '0.1' }],
-          [{ key: 'grain_fe', label: '籽粒铁含量(mg/kg)', type: 'number', step: '0.1' }, { key: 'flour_fe', label: '面粉铁含量(mg/kg)', type: 'number', step: '0.1' }],
-          samplingMetaRow,
-        ]
-      };
-      return fields[currentPage.value] || [];
-    });
+    // 通用采样元数据（采样日期/采样人/采样方法）行 - 用于采样类表
+    const samplingMetaRow = [
+      { key: 'sampling_date', label: '采样日期', type: 'date' },
+      { key: 'sampler', label: '采样人', type: 'text' },
+      { key: 'sampling_method', label: '采样方法', type: 'text' },
+    ];
+    // 数据录入页 key → 数据表名（录入页与「数据总览」共用字段定义）
+    const PAGE_TO_TABLE = {
+      soil: 'soil_data', phenology: 'phenology', emergence: 'emergence',
+      agronomic: 'agronomic_traits', physiological: 'physiological',
+      yield: 'yield_data', quality: 'quality_data',
+    };
+    const TABLE_LABELS = {
+      soil_data: '土壤数据', phenology: '物候期', emergence: '出苗调查',
+      agronomic_traits: '农艺性状', physiological: '生理指标', yield_data: '产量数据',
+      quality_data: '品质数据', operation_log: '操作日志',
+      fertilization_log: '铁肥施用', field_management: '田间管理',
+    };
+    const LOG_TABLES = ['operation_log', 'fertilization_log', 'field_management'];
+    const formFieldGroups = {
+      soil: [
+        [{ key: 'ph', label: 'pH', type: 'number', step: '0.1' }, { key: 'fe_available', label: '有效铁(mg/kg)', type: 'number', step: '0.1' }, { key: 'fe_total', label: '全铁(g/kg)', type: 'number', step: '0.1' }],
+        [{ key: 'organic_matter', label: '有机质(g/kg)', type: 'number', step: '0.1' }, { key: 'p_available', label: '有效磷(mg/kg)', type: 'number', step: '0.1' }, { key: 'k_available', label: '速效钾(mg/kg)', type: 'number', step: '0.1' }],
+        [{ key: 'cec', label: 'CEC(cmol/kg)', type: 'number', step: '0.1' }, { key: 'bulk_density', label: '容重(g/cm³)', type: 'number', step: '0.01' }],
+        samplingMetaRow,
+      ],
+      phenology: [
+        [{ key: 'sowing', label: '播种期', type: 'date' }, { key: 'emergence', label: '出苗期', type: 'date' }, { key: 'tillering', label: '分蘖期', type: 'date' }],
+        [{ key: 'overwinter', label: '越冬期', type: 'date' }, { key: 'regreening', label: '返青期', type: 'date' }, { key: 'jointing', label: '拔节期', type: 'date' }],
+        [{ key: 'heading', label: '抽穗期', type: 'date' }, { key: 'flowering', label: '开花期', type: 'date' }, { key: 'maturity', label: '成熟期', type: 'date' }]
+      ],
+      emergence: [
+        [{ key: 'seeds_sown', label: '播种粒数', type: 'number' }, { key: 'emerged_7d', label: '7天出苗数', type: 'number' }, { key: 'rate_7d', label: '7天出苗率(%) 自动算', type: 'number', step: '0.1', readonly: true }],
+        [{ key: 'emerged_14d', label: '14天出苗数', type: 'number' }, { key: 'rate_14d', label: '14天出苗率(%) 自动算', type: 'number', step: '0.1', readonly: true }, { key: 'basic_seedlings', label: '基本苗数', type: 'number', step: '0.1' }],
+        samplingMetaRow,
+      ],
+      agronomic: [
+        [{ key: 'tillers_prewinter', label: '越冬前分蘖', type: 'number', step: '0.1' }, { key: 'tillers_postregreen', label: '返青后分蘖', type: 'number', step: '0.1' }, { key: 'tillers_jointing', label: '拔节期分蘖', type: 'number', step: '0.1' }],
+        [{ key: 'plant_height', label: '株高(cm)', type: 'number', step: '0.1' }, { key: 'lai_jointing', label: '拔节期LAI', type: 'number', step: '0.1' }, { key: 'lai_heading', label: '抽穗期LAI', type: 'number', step: '0.1' }],
+        [{ key: 'dry_weight_jointing', label: '拔节期干重(g/株)', type: 'number', step: '0.1' }, { key: 'dry_weight_heading', label: '抽穗期干重(g/株)', type: 'number', step: '0.1' }, { key: 'dry_weight_maturity', label: '成熟期干重(g/株)', type: 'number', step: '0.1' }],
+        samplingMetaRow,
+      ],
+      physiological: [
+        [{ key: 'spad_jointing', label: '拔节期SPAD', type: 'number', step: '0.1' }, { key: 'spad_heading', label: '抽穗期SPAD', type: 'number', step: '0.1' }, { key: 'spad_filling', label: '灌浆期SPAD', type: 'number', step: '0.1' }],
+        [{ key: 'photo_rate_heading', label: '抽穗期光合速率', type: 'number', step: '0.01' }, { key: 'photo_rate_filling', label: '灌浆期光合速率', type: 'number', step: '0.01' }, { key: 'active_fe_jointing', label: '拔节期活性铁', type: 'number', step: '0.1' }],
+        [{ key: 'active_fe_filling', label: '灌浆期活性铁', type: 'number', step: '0.1' }, { key: 'cat', label: 'CAT活性', type: 'number', step: '0.01' }, { key: 'pod', label: 'POD活性', type: 'number', step: '0.01' }],
+        samplingMetaRow,
+      ],
+      yield: [
+        [{ key: 'spikes_per_mu', label: '亩穗数(万穗/亩)', type: 'number', step: '0.1' }, { key: 'grains_per_spike', label: '穗粒数(粒/穗)', type: 'number', step: '0.1' }, { key: 'thousand_grain_wt_1', label: '千粒重第1组(g)', type: 'number', step: '0.01' }],
+        [{ key: 'thousand_grain_wt_2', label: '千粒重第2组(g)', type: 'number', step: '0.01' }, { key: 'actual_yield', label: '实际产量(kg/亩)', type: 'number', step: '0.1' }, { key: 'harvest_index', label: '收获指数', type: 'number', step: '0.01' }],
+        [{ key: 'harvest_date', label: '收获日期', type: 'date' }, { key: 'harvest_area', label: '实收面积(m²)', type: 'number', step: '0.1' }, { key: 'moisture_content', label: '含水率(%)', type: 'number', step: '0.1' }],
+        [{ key: 'standardized_yield', label: '标准产量(13%含水率) 自动算', type: 'number', step: '0.1', readonly: true }],
+        samplingMetaRow,
+      ],
+      quality: [
+        [{ key: 'grain_protein', label: '籽粒蛋白质(%)', type: 'number', step: '0.1' }, { key: 'wet_gluten', label: '湿面筋(%)', type: 'number', step: '0.1' }, { key: 'sds_sedimentation', label: 'SDS沉降值(mL)', type: 'number', step: '0.1' }],
+        [{ key: 'grain_fe', label: '籽粒铁含量(mg/kg)', type: 'number', step: '0.1' }, { key: 'flour_fe', label: '面粉铁含量(mg/kg)', type: 'number', step: '0.1' }],
+        samplingMetaRow,
+      ]
+    };
+    // 日志表编辑字段（不含 id/plot_id/base_code/created_by 等元数据列）
+    const logFormFieldGroups = {
+      operation_log: [
+        [{ key: 'date', label: '日期', type: 'date' }, { key: 'time', label: '时间', type: 'text' }, { key: 'op_type', label: '操作类型', type: 'text' }],
+        [{ key: 'treatment', label: '处理', type: 'text' }, { key: 'block', label: '区组', type: 'text' }, { key: 'dosage', label: '用量', type: 'text' }],
+        [{ key: 'weather', label: '天气', type: 'text' }, { key: 'temperature', label: '温度', type: 'number', step: '0.1' }, { key: 'humidity', label: '湿度(%)', type: 'number', step: '0.1' }],
+        [{ key: 'operator', label: '操作人', type: 'text' }, { key: 'remarks', label: '备注', type: 'text' }],
+      ],
+      fertilization_log: [
+        [{ key: 'application_date', label: '施用日期', type: 'date' }, { key: 'growth_stage', label: '生育期', type: 'text' }, { key: 'fertilizer_type', label: '肥料类型', type: 'text' }],
+        [{ key: 'application_method', label: '施用方法', type: 'text' }, { key: 'concentration', label: '浓度', type: 'number', step: '0.01' }, { key: 'dilution_ratio', label: '稀释倍数', type: 'number', step: '0.01' }],
+        [{ key: 'dose_per_plot', label: '每小区用量', type: 'number', step: '0.01' }, { key: 'dose_per_mu', label: '每亩用量', type: 'number', step: '0.01' }, { key: 'active_iron_amount', label: '活性铁量', type: 'number', step: '0.01' }],
+        [{ key: 'spray_volume', label: '喷液量', type: 'number', step: '0.01' }, { key: 'application_times', label: '施用次数', type: 'number', step: '1' }, { key: 'operator', label: '操作人', type: 'text' }],
+        [{ key: 'weather_temp', label: '天气温度', type: 'number', step: '0.1' }, { key: 'weather_humidity', label: '天气湿度(%)', type: 'number', step: '0.1' }, { key: 'remarks', label: '备注', type: 'text' }],
+      ],
+      field_management: [
+        [{ key: 'management_date', label: '管理日期', type: 'date' }, { key: 'management_type', label: '管理类型', type: 'text' }, { key: 'input_name', label: '投入品名称', type: 'text' }],
+        [{ key: 'input_amount', label: '投入量', type: 'number', step: '0.1' }, { key: 'input_unit', label: '单位', type: 'text' }, { key: 'method', label: '方式', type: 'text' }],
+        [{ key: 'operator', label: '操作人', type: 'text' }, { key: 'remarks', label: '备注', type: 'text' }],
+      ],
+    };
+    function getFieldsForTable(tableName) {
+      const pageKey = Object.keys(PAGE_TO_TABLE).find(k => PAGE_TO_TABLE[k] === tableName);
+      return (pageKey && formFieldGroups[pageKey]) || [];
+    }
+    function getFieldsForLogTable(tableName) { return logFormFieldGroups[tableName] || []; }
+    function getEditFields(tableName) {
+      return LOG_TABLES.includes(tableName) ? getFieldsForLogTable(tableName) : getFieldsForTable(tableName);
+    }
+    const currentFormFields = computed(() => formFieldGroups[currentPage.value] || []);
     
     const currentTableColumns = computed(() => {
       const fieldGroups = currentFormFields.value;
@@ -1956,17 +2905,29 @@ const app = createApp({
     
     const currentRecords = ref([]);
     const formData = reactive({});
-    
+
+    // 数据录入页专用小区列表：始终加载全部基地小区，按选中基地在客户端过滤，
+    // 避免受小区管理页 selectedBaseFilter 影响（修复「选择基地后小区不载入」）。
+    const entryPlots = ref([]);
+    async function loadEntryPlots() {
+      try {
+        const res = await api('GET', '/api/v1/plots');
+        entryPlots.value = res.data || [];
+      } catch (e) { console.error('Entry plots error:', e); }
+    }
+
     const filteredPlots = computed(() => {
-      if (!selectedDataBase.value) return plots.value;
-      return plots.value.filter(p => p.base_code === selectedDataBase.value);
+      if (!selectedDataBase.value) return entryPlots.value;
+      return entryPlots.value.filter(p => p.base_code === selectedDataBase.value);
     });
     
     // API methods
     async function api(method, url, data = null) {
       const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (authToken.value) opts.headers['Authorization'] = 'Bearer ' + authToken.value;
       if (data) opts.body = JSON.stringify(data);
       const res = await fetch(API_BASE + url, opts);
+      if (res.status === 401) clearAuth();
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || err.message || '请求失败');
@@ -2058,14 +3019,118 @@ const app = createApp({
         currentRecords.value = res.data || [];
       } catch (e) { console.error('Data error:', e); currentRecords.value = []; }
     }
-    
+
+    // ---- 「数据总览」 ----
+    const dataViewTables = computed(() => TABLE_LABELS);
+    const dataEditTableLabel = computed(() => (dataEdit.table ? (TABLE_LABELS[dataEdit.table] || dataEdit.table) : ''));
+    const dataEditFields = computed(() => getEditFields(dataEdit.table));
+    const filteredDataViewRecords = computed(() => {
+      const kw = (dataViewKeyword.value || '').toLowerCase();
+      if (!kw) return dataViewRecords.value;
+      return dataViewRecords.value.filter(r =>
+        String(r.plot_code || '').toLowerCase().includes(kw) ||
+        String(r.treatment || '').toLowerCase().includes(kw) ||
+        String(r.updated_by || '').toLowerCase().includes(kw) ||
+        String(r.plot_base_code || r.base_code || '').toLowerCase().includes(kw)
+      );
+    });
+
+    function dataViewSummary(r) {
+      const fields = getEditFields(r.table_name);
+      const seen = [];
+      for (const group of fields) {
+        for (const f of group) {
+          const v = r[f.key];
+          if (v !== null && v !== undefined && v !== '' && seen.length < 3) {
+            seen.push(`${f.label}: ${v}`);
+          }
+        }
+      }
+      return seen.length ? seen.join(' ｜ ') : '—';
+    }
+
+    function fmtTime(t) {
+      if (!t) return '—';
+      const d = new Date(t);
+      if (isNaN(d.getTime())) return String(t);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    async function loadDataView() {
+      try {
+        const params = new URLSearchParams();
+        if (dataViewBase.value) params.set('base_code', dataViewBase.value);
+        if (dataViewTable.value) params.set('table', dataViewTable.value);
+        const qs = params.toString();
+        const res = await api('GET', `/api/v1/data-view${qs ? '?' + qs : ''}`);
+        dataViewRecords.value = res.data || [];
+      } catch (e) { console.error('Data view error:', e); dataViewRecords.value = []; }
+    }
+
+    function toInputDate(v) {
+      if (!v) return '';
+      const s = String(v);
+      const m = s.match(/^\d{4}-\d{2}-\d{2}/);
+      return m ? m[0] : s;
+    }
+
+    function openDataEdit(record) {
+      const form = {};
+      getEditFields(record.table_name).forEach(group => group.forEach(f => {
+        let v = record[f.key];
+        if (f.type === 'date') v = toInputDate(v);
+        if (v !== null && v !== undefined && v !== '') form[f.key] = v;
+      }));
+      dataEdit.table = record.table_name;
+      dataEdit.record = record;
+      dataEdit.formData = form;
+      dataEdit.show = true;
+    }
+
+    function closeDataEdit(e) {
+      if (e && wasModalDrag(e)) return;
+      dataEdit.show = false;
+    }
+
+    async function saveDataEdit() {
+      const record = dataEdit.record;
+      if (!record) return;
+      const data = {};
+      getEditFields(record.table_name).forEach(group => group.forEach(f => {
+        const v = dataEdit.formData[f.key];
+        if (v !== null && v !== undefined && v !== '') data[f.key] = v;
+      }));
+      try {
+        if (LOG_TABLES.includes(record.table_name)) {
+          // 日志表按主键 id 更新
+          await api('PUT', `/api/v1/table/${record.table_name}/${record.record_id}`, { data });
+        } else {
+          // 测定表按 (base_code, plot_code) upsert
+          const extra = record.table_name === 'soil_data' && record.phase ? { phase: record.phase } : {};
+          await api('POST', `/api/v1/table/${record.table_name}`, {
+            base_code: record.plot_base_code || record.base_code || '',
+            plot_code: record.plot_code,
+            data,
+            extra
+          });
+        }
+        alert('✅ 保存成功！');
+        dataEdit.show = false;
+        await loadDataView();
+      } catch (e) {
+        alert('❌ 保存失败：' + e.message);
+      }
+    }
+
     async function loadCurrentRecord() {
       if (!selectedPlotCode.value) {
         Object.keys(formData).forEach(k => delete formData[k]);
         return;
       }
       try {
-        const plot = plots.value.find(p => p.plot_code === selectedPlotCode.value);
+        const plot = entryPlots.value.find(p => p.plot_code === selectedPlotCode.value &&
+          (!selectedDataBase.value || p.base_code === selectedDataBase.value));
         if (!plot) return;
         const table = currentPage.value === 'soil' ? 'soil_data' : currentPage.value;
         const url = table === 'soil_data' 
@@ -2102,6 +3167,7 @@ const app = createApp({
         const table = currentPage.value === 'soil' ? 'soil_data' : currentPage.value;
         const payload = {
           plot_code: selectedPlotCode.value,
+          base_code: selectedDataBase.value || '',
           data: {},
           extra: {}
         };
@@ -2353,9 +3419,17 @@ const app = createApp({
           num_treatments: initForm.treatments
         };
         const res = await api('POST', '/api/v1/plots/init', payload);
-        alert(`✅ 成功初始化 ${res.data?.created || total} 个小区！`);
+        const createdCount = res.data?.created || 0;
         modal.show = false;
         await loadPlots();
+        if (selectedBaseFilter.value) {
+          await loadBaseDetails(selectedBaseFilter.value);
+        }
+        if (createdCount > 0) {
+          alert(`✅ 成功初始化 ${createdCount} 个小区！`);
+        } else {
+          alert(`ℹ️ 该基地 ${total} 个小区已存在，无需重复初始化。`);
+        }
       } catch (e) {
         alert('❌ 初始化失败：' + e.message);
       }
@@ -2394,10 +3468,29 @@ const app = createApp({
     // QR Code
     async function showQRCode(plot) {
       qrPlot.value = plot;
-      qrUrl.value = `${window.location.origin}/mobile_entry?plot=${plot.plot_code}`;
-      
+
+      // 如果 serverInfo 仍为默认 localhost，实时重新获取 LAN IP
+      if (serverInfo.value.host === 'localhost' || serverInfo.value.host === '127.0.0.1') {
+        try {
+          const r = await fetch('/api/v1/server-info');
+          if (r.ok) {
+            const info = await r.json();
+            if (info && info.host && info.host !== '127.0.0.1') {
+              serverInfo.value = info;
+              console.log('二维码生成时重新获取服务器信息：', info);
+            }
+          }
+        } catch (e) {
+          console.warn('获取服务器信息失败，二维码可能使用 localhost', e);
+        }
+      }
+
+      // 使用后端检测到的 LAN IP 生成二维码，确保手机能访问
+      const baseUrl = serverInfo.value.base_url || window.location.origin;
+      qrUrl.value = `${baseUrl}/mobile_entry?plot=${plot.plot_code}`;
+
       // Generate QR code using external API
-      const qrContent = `${window.location.origin}/mobile_entry?plot=${plot.plot_code}`;
+      const qrContent = qrUrl.value;
       qrCodeDataUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrContent)}`;
       modal.type = 'qr';
       modal.title = '扫码录入';
@@ -2444,11 +3537,17 @@ const app = createApp({
     }
     
     function getTagClass(value) {
-      if (!value || value === '—') return '';
-      const num = parseInt(value);
+      if (value === null || value === undefined || value === '—') return '';
+      const num = Number(value);
+      if (isNaN(num)) return '';
       if (num >= 80) return 'tag tag-success';
       if (num >= 50) return 'tag tag-warning';
       return 'tag tag-info';
+    }
+
+    function getMatrixCell(value) {
+      if (value === null || value === undefined || value === '—') return '—';
+      return value + '%';
     }
     
     function formatDate(dateStr) {
@@ -2623,8 +3722,12 @@ const app = createApp({
       } else if (newPage === 'export') {
         loadExportData();
         loadBases();
+      } else if (newPage === 'data_view') {
+        loadDataView();
+        loadBases();
       } else if (['soil', 'phenology', 'emergence', 'agronomic', 'physiological', 'yield', 'quality'].includes(newPage)) {
         loadDataRecords();
+        loadEntryPlots();
         loadPlots();
       }
       // Reset selections
@@ -2632,27 +3735,65 @@ const app = createApp({
       Object.keys(formData).forEach(k => delete formData[k]);
       currentRecords.value = [];
     });
+
+    // 切换「选择基地」时重置已选小区，避免保留上一个基地的小区
+    watch(selectedDataBase, () => {
+      selectedPlotCode.value = '';
+    });
     
     // Initial load
     onMounted(async () => {
+      // 加载服务器信息（获取 LAN IP 用于二维码生成）
+      try {
+        const r = await fetch('/api/v1/server-info');
+        if (r.ok) {
+          const info = await r.json();
+          if (info && info.host) {
+            serverInfo.value = info;
+            console.log('服务器信息：', info);
+          }
+        }
+      } catch (e) {
+        console.warn('无法获取服务器信息，QR码可能使用 localhost');
+      }
+      
       await loadBases();
       await loadPlots();
+      await loadEntryPlots();
       await loadDashboard();
     });
     
     return {
+      // 认证
+      authToken, currentUser,
+      authView, loginError, loginLoading, pwdLoading, changePwdError,
+      forcePwd, chgPwdModal,
+      submitLogin, openChangePwdFromLogin, submitChangePwdFromLogin,
+      submitForceChangePwd,
+      openChangePwdFromTopbar, closeChangePwdModal, submitModalChangePwd,
+      logout,
+      // 管理员用户管理
+      adminUserList, addUserForm, addUserError,
+      loadAdminUsers, openAddUserModal, closeAddUserModal, submitAddUser,
+      resetUserPassword, deleteUser,
       // Navigation
       currentPage, currentPageTitles, currentPageDescriptions,
+      // Server info
+      serverInfo,
       // Data
       bases, plots, dashboardData, operations,
       // Map view
       baseViewMode, viewBtnStyle, viewBtnActiveStyle, mapInstance, baseMarkers,
       // Filters
       selectedBaseFilter, selectedDataBase, selectedPlotCode, soilPhase, operationBase,
+      // 数据总览（数据查看）
+      dataViewBase, dataViewTable, dataViewKeyword, dataViewRecords, dataEdit,
+      dataViewTables, dataEditTableLabel, dataEditFields, filteredDataViewRecords,
+      dataViewSummary, fmtTime, loadDataView, openDataEdit, closeDataEdit, saveDataEdit,
       // Forms
       baseForm, plotForm, newOp, formData,
       // Modals
-      modal, qrCodeDataUrl, qrPlot, qrUrl,
+      modal, modalMaskDown, closeModalIfNotDrag, qrCodeDataUrl, qrPlot, qrUrl,
       // Export
       exportBase, exportTable, exportData,
       // Constants
@@ -2672,7 +3813,7 @@ const app = createApp({
       // Map methods
       initBaseMap, updateBaseMarkers, focusBaseOnMap, switchToMapView, nextTick,
       // Helpers
-      getTreatmentColor, getTreatmentName, getTagClass, formatDate, getPlotCodeById, getWeatherIcon, getWeatherTrendData, formatLocalDate,
+      getTreatmentColor, getTreatmentName, getTagClass, getMatrixCell, formatDate, getPlotCodeById, getWeatherIcon, getWeatherTrendData, formatLocalDate,
       // Weather chart helpers
       tempPixelY, chartLinePoints, chartPastLinePoints,
       // Forms

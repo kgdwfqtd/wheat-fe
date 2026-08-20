@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#667eea">
+<title>田间数据采集</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  #app { min-height: 100vh; }
+
+  /* ===== 加载/错误页面 ===== */
+  .page-center {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 60vh; padding: 20px; text-align: center;
+  }
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid #e5e5ea;
+    border-top-color: #667eea; border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-msg {
+    background: #fff; border-radius: 12px; padding: 24px; margin: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+  }
+  .error-msg h3 { color: #d0021b; margin-bottom: 8px; }
+  .error-msg button {
+    margin-top: 16px; padding: 10px 24px; background: #667eea;
+    color: white; border: none; border-radius: 8px; font-size: 15px;
+  }
+
+  /* ===== 登录页 ===== */
+  .login-page {
+    padding: 40px 24px 24px;
+  }
+  .login-header {
+    text-align: center; margin-bottom: 32px;
+  }
+  .login-icon {
+    font-size: 48px; margin-bottom: 12px;
+  }
+  .login-header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .login-header p { color: #86868b; font-size: 14px; }
+  .login-card {
+    background: #fff; border-radius: 16px; padding: 24px 20px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.05);
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 14px; color: #1d1d1f;
+    margin-bottom: 8px; font-weight: 500;
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 12px 14px; font-size: 16px;
+    border: 1px solid #d2d2d7; border-radius: 10px;
+    background: #f5f5f7; color: #1d1d1f;
+    appearance: none; -webkit-appearance: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none; border-color: #667eea; background: #fff;
+  }
+  .form-group input::placeholder { color: #8e8e93; }
+  .input-with-toggle {
+    position: relative;
+  }
+  .input-with-toggle input { padding-right: 64px; }
+  .input-with-toggle .toggle-eye {
+    position: absolute; right: 6px; top: 50%;
+    transform: translateY(-50%);
+    padding: 4px 8px; border: none; background: transparent;
+    color: #667eea; cursor: pointer; font-size: 14px;
+    border-radius: 6px;
+  }
+  .input-with-toggle .toggle-eye:hover { background: rgba(102,126,234,0.1); }
+  .btn-primary {
+    width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; border: none; border-radius: 12px; font-size: 16px;
+    font-weight: 600; cursor: pointer; margin-top: 8px;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+  .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ===== 主页面 ===== */
+  .app-header {
+    position: sticky; top: 0; z-index: 100;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; padding: 16px 20px;
+    padding-top: calc(16px + env(safe-area-inset-top));
+  }
+  .app-header .plot-info { display: flex; align-items: center; gap: 8px; }
+  .app-header .plot-name { font-size: 20px; font-weight: 700; }
+  .app-header .plot-meta { font-size: 13px; opacity: 0.9; margin-top: 2px; }
+  .app-header .user-info {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+  }
+  .app-header .user-name { font-size: 14px; }
+  .btn-logout {
+    background: rgba(255,255,255,0.2); border: none; color: #fff;
+    padding: 6px 14px; border-radius: 8px; font-size: 13px;
+  }
+
+  /* 选项卡 */
+  .tab-bar {
+    display: flex; overflow-x: auto; background: #fff;
+    border-bottom: 1px solid #e5e5ea;
+    position: sticky; top: calc(100px + env(safe-area-inset-top)); z-index: 99;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-item {
+    flex-shrink: 0; padding: 14px 18px; font-size: 14px;
+    color: #86868b; border-bottom: 2px solid transparent;
+    cursor: pointer; white-space: nowrap;
+  }
+  .tab-item.active {
+    color: #667eea; border-bottom-color: #667eea; font-weight: 600;
+  }
+
+  /* 内容区 */
+  .content { padding: 16px; padding-bottom: 32px; }
+  .card {
+    background: #fff; border-radius: 16px; padding: 20px 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04); margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 17px; font-weight: 600; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-subtitle { font-size: 13px; color: #86868b; margin-bottom: 16px; }
+
+  /* 表单网格 */
+  .form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  .form-grid .full-width { grid-column: 1 / -1; }
+  .form-grid .three-col { grid-column: auto; }
+
+  .form-item label {
+    display: block; font-size: 13px; color: #86868b;
+    margin-bottom: 6px;
+  }
+  .form-item input, .form-item select {
+    width: 100%; padding: 10px 12px; font-size: 15px;
+    border: 1px solid #d2d2d7; border-radius: 8px;
+    background: #f5f5f7; color: #1d1d1f;
+  }
+  .form-item input:focus, .form-item select:focus {
+    outline: none; border-color: #667eea; background: #fff;
+  }
+  .form-item .unit {
+    font-size: 11px; color: #8e8e93; margin-top: 2px; display: block;
+  }
+
+  .section-subtitle {
+    font-size: 14px; color: #1d1d1f; font-weight: 600;
+    margin: 16px 0 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .section-subtitle::before {
+    content: ''; width: 3px; height: 14px;
+    background: #667eea; border-radius: 2px;
+  }
+
+  /* 按钮 */
+  .btn-submit {
+    width: 100%; padding: 14px; background: #34c759;
+    color: #fff; border: none; border-radius: 12px;
+    font-size: 16px; font-weight: 600; margin-top: 20px;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+  .btn-submit:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-submit:disabled { opacity: 0.5; }
+
+  /* 理论产量提示 */
+  .auto-calc {
+    background: #fffbea; border: 1px solid #ffe58f; border-radius: 8px;
+    padding: 10px 12px; margin-top: 12px;
+    font-size: 14px; color: #5c4d00;
+  }
+
+  /* Toast 提示 */
+  .toast {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.8); color: #fff;
+    padding: 14px 24px; border-radius: 12px;
+    font-size: 15px; z-index: 200; max-width: 80%;
+    text-align: center;
+  }
+  .toast.success { background: rgba(52, 199, 89, 0.95); }
+  .toast.error { background: rgba(255, 59, 48, 0.95); }
+
+  /* 状态徽标 */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 500;
+  }
+  .badge-done { background: #e8f5e9; color: #2e7d32; }
+  .badge-pending { background: #fff3e0; color: #e65100; }
+
+  /* 已有数据提示 */
+  .existing-data {
+    background: #fff3e0; border: 1px solid #ffe0b2; border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 12px;
+    font-size: 13px; color: #e65100;
+  }
+
+  /* 底部信息 */
+  .footer {
+    text-align: center; padding: 24px 20px;
+    color: #86868b; font-size: 12px;
+  }
+
+  /* 历史数据查看按钮 */
+  .btn-outline {
+    width: 100%; padding: 10px; background: transparent;
+    color: #667eea; border: 1px solid #667eea;
+    border-radius: 10px; font-size: 14px; margin-top: 12px;
+  }
+
+  /* 表格样式 */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table th, .data-table td {
+    padding: 8px 10px; text-align: left;
+    border-bottom: 1px solid #e5e5ea;
+  }
+  .data-table th { color: #86868b; font-weight: 500; font-size: 12px; }
+
+  /* 响应式 */
+  @media (min-width: 480px) {
+    .form-grid { grid-template-columns: 1fr 1fr 1fr; }
+    .form-grid .full-width { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 加载中 -->
+  <div v-if="loading" class="page-center">
+    <div class="spinner"></div>
+    <div>正在加载小区信息...</div>
+  </div>
+
+  <!-- 错误 -->
+  <div v-else-if="error" class="page-center">
+    <div class="error-msg">
+      <h3>⚠️ 加载失败</h3>
+      <p style="color:#86868b;">{{ error }}</p>
+      <button onclick="location.reload()">重新加载</button>
+    </div>
+  </div>
+
+  <!-- 登录/操作员信息 -->
+  <div v-else-if="!operator" class="login-page">
+    <div class="login-header">
+      <div class="login-icon">🌾</div>
+      <h1>田间数据采集</h1>
+      <p>小区编号：{{ plotInfo.plot_code }}</p>
+    </div>
+    <div class="login-card">
+      <div class="form-group">
+        <label>👤 用户名</label>
+        <input v-model="loginForm.username" type="text" placeholder="请输入用户名（如 zhaowei）" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>🔑 登录密码（与电脑端一致）</label>
+        <div class="input-with-toggle">
+          <input v-model="loginForm.password"
+                 :type="loginForm.showPwd ? 'text' : 'password'"
+                 placeholder="请输入登录密码" autocomplete="current-password" />
+          <button type="button" class="toggle-eye"
+                  @click="loginForm.showPwd = !loginForm.showPwd">
+            {{ loginForm.showPwd ? '🙈' : '👁' }}
+          </button>
+        </div>
+      </div>
+      <button class="btn-primary" @click="doLogin" :disabled="loginLoading">
+        {{ loginLoading ? '验证中...' : '进入采集' }}
+      </button>
+      <p style="text-align:center;color:#86868b;font-size:12px;margin-top:16px;">
+        初始密码 12345678；首次登录请联系管理员重置密码
+      </p>
+    </div>
+  </div>
+
+  <!-- 主采集页面 -->
+  <div v-else>
+    <!-- 头部信息 -->
+    <div class="app-header">
+      <div class="plot-info">
+        <span style="font-size:28px;">📋</span>
+        <div>
+          <div class="plot-name">{{ plotInfo.plot_code }}</div>
+          <div class="plot-meta">区组: {{ plotInfo.block }} | 处理: {{ plotInfo.treatment }}</div>
+        </div>
+      </div>
+      <div class="user-info">
+        <span class="user-name">👤 {{ authUser ? `${authUser.real_name}（${authUser.username}）` : operator }}</span>
+        <button class="btn-logout" @click="logout">切换</button>
+      </div>
+    </div>
+
+    <!-- 选项卡 -->
+    <div class="tab-bar">
+      <div v-for="tab in tabs" :key="tab.key"
+           :class="['tab-item', {active: activeTab === tab.key}]"
+           @click="activeTab = tab.key">
+        {{ tab.icon }} {{ tab.label }}
+      </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="content">
+      <!-- 土壤数据 -->
+      <div v-if="activeTab === 'soil'">
+        <div class="card">
+          <div class="card-title">🪣 土壤数据</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 土壤理化性质测定</div>
+          
+          <div class="section-subtitle">测定阶段</div>
+          <div class="form-item" style="margin-bottom:16px;">
+            <label>选择阶段</label>
+            <select v-model="soilForm.phase">
+              <option value="播前">播前</option>
+              <option value="收获后">收获后</option>
+            </select>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-item">
+              <label>pH 值</label>
+              <input v-model.number="soilForm.ph" type="number" step="0.1" min="0" max="14" placeholder="0-14" />
+            </div>
+            <div class="form-item">
+              <label>有效铁</label>
+              <input v-model.number="soilForm.fe_available" type="number" step="0.01" min="0" placeholder="mg/kg" />
+              <span class="unit">mg/kg</span>
+            </div>
+            <div class="form-item">
+              <label>全铁</label>
+              <input v-model.number="soilForm.fe_total" type="number" step="0.01" min="0" placeholder="g/kg" />
+              <span class="unit">g/kg</span>
+            </div>
+            <div class="form-item">
+              <label>有机质</label>
+              <input v-model.number="soilForm.organic_matter" type="number" step="0.01" min="0" placeholder="g/kg" />
+              <span class="unit">g/kg</span>
+            </div>
+            <div class="form-item">
+              <label>有效磷</label>
+              <input v-model.number="soilForm.p_available" type="number" step="0.01" min="0" placeholder="mg/kg" />
+              <span class="unit">mg/kg</span>
+            </div>
+            <div class="form-item">
+              <label>有效钾</label>
+              <input v-model.number="soilForm.k_available" type="number" step="0.01" min="0" placeholder="mg/kg" />
+              <span class="unit">mg/kg</span>
+            </div>
+          </div>
+
+          <button class="btn-submit" @click="submitSoil" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交土壤数据' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 物候期 -->
+      <div v-if="activeTab === 'phenology'">
+        <div class="card">
+          <div class="card-title">📅 物候期</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 各生育期日期</div>
+
+          <div class="form-grid">
+            <div class="form-item">
+              <label>播种日期</label>
+              <input v-model="phenForm.sowing" type="date" />
+            </div>
+            <div class="form-item">
+              <label>出苗日期</label>
+              <input v-model="phenForm.emergence" type="date" />
+            </div>
+            <div class="form-item">
+              <label>分蘖日期</label>
+              <input v-model="phenForm.tillering" type="date" />
+            </div>
+            <div class="form-item">
+              <label>越冬日期</label>
+              <input v-model="phenForm.overwinter" type="date" />
+            </div>
+            <div class="form-item">
+              <label>返青日期</label>
+              <input v-model="phenForm.regreening" type="date" />
+            </div>
+            <div class="form-item">
+              <label>拔节日期</label>
+              <input v-model="phenForm.jointing" type="date" />
+            </div>
+            <div class="form-item">
+              <label>抽穗日期</label>
+              <input v-model="phenForm.heading" type="date" />
+            </div>
+            <div class="form-item">
+              <label>开花日期</label>
+              <input v-model="phenForm.flowering" type="date" />
+            </div>
+            <div class="form-item">
+              <label>灌浆日期</label>
+              <input v-model="phenForm.filling" type="date" />
+            </div>
+            <div class="form-item">
+              <label>成熟日期</label>
+              <input v-model="phenForm.maturity" type="date" />
+            </div>
+          </div>
+
+          <button class="btn-submit" @click="submitPhenology" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交物候期数据' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 出苗调查 -->
+      <div v-if="activeTab === 'emergence'">
+        <div class="card">
+          <div class="card-title">🌱 出苗调查</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 出苗率及基本苗</div>
+
+          <div class="form-grid">
+            <div class="form-item">
+              <label>播种粒数</label>
+              <input v-model.number="emForm.seeds_sown" type="number" step="1" min="0" />
+              <span class="unit">粒</span>
+            </div>
+            <div class="form-item">
+              <label>7天出苗数</label>
+              <input v-model.number="emForm.emerged_7d" type="number" step="1" min="0" />
+              <span class="unit">株</span>
+            </div>
+            <div class="form-item">
+              <label>7天出苗率</label>
+              <input :value="calcRate(emForm.emerged_7d, emForm.seeds_sown)" type="text" readonly placeholder="自动计算" />
+              <span class="unit">%（自动计算）</span>
+            </div>
+            <div class="form-item">
+              <label>14天出苗数</label>
+              <input v-model.number="emForm.emerged_14d" type="number" step="1" min="0" />
+              <span class="unit">株</span>
+            </div>
+            <div class="form-item">
+              <label>14天出苗率</label>
+              <input :value="calcRate(emForm.emerged_14d, emForm.seeds_sown)" type="text" readonly placeholder="自动计算" />
+              <span class="unit">%（自动计算）</span>
+            </div>
+            <div class="form-item">
+              <label>基本苗数</label>
+              <input v-model.number="emForm.basic_seedlings" type="number" step="0.1" min="0" />
+              <span class="unit">万/亩</span>
+            </div>
+          </div>
+
+          <button class="btn-submit" @click="submitEmergence" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交出苗数据' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 农艺性状 -->
+      <div v-if="activeTab === 'agronomic'">
+        <div class="card">
+          <div class="card-title">🌿 农艺性状</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 分蘖、株高、干物质积累</div>
+
+          <div class="section-subtitle">分蘖数（个/株）</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>越冬前</label>
+              <input v-model.number="agForm.tillers_prewinter" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>返青后</label>
+              <input v-model.number="agForm.tillers_postregreen" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>拔节期</label>
+              <input v-model.number="agForm.tillers_jointing" type="number" step="0.1" min="0" />
+            </div>
+          </div>
+
+          <div class="section-subtitle">株高与 LAI</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>株高</label>
+              <input v-model.number="agForm.plant_height" type="number" step="0.1" min="0" />
+              <span class="unit">cm</span>
+            </div>
+            <div class="form-item">
+              <label>拔节期 LAI</label>
+              <input v-model.number="agForm.lai_jointing" type="number" step="0.01" min="0" />
+            </div>
+            <div class="form-item">
+              <label>抽穗期 LAI</label>
+              <input v-model.number="agForm.lai_heading" type="number" step="0.01" min="0" />
+            </div>
+          </div>
+
+          <div class="section-subtitle">干物质积累（g/株）</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>拔节期干重</label>
+              <input v-model.number="agForm.dry_weight_jointing" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>抽穗期干重</label>
+              <input v-model.number="agForm.dry_weight_heading" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>成熟期干重</label>
+              <input v-model.number="agForm.dry_weight_maturity" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>根系干重</label>
+              <input v-model.number="agForm.root_dry_weight" type="number" step="0.1" min="0" />
+            </div>
+          </div>
+
+          <button class="btn-submit" @click="submitAgronomic" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交农艺性状' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 生理指标 -->
+      <div v-if="activeTab === 'physiological'">
+        <div class="card">
+          <div class="card-title">🔬 生理指标</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - SPAD、光合速率、酶活性</div>
+
+          <div class="section-subtitle">SPAD 值</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>拔节期 SPAD</label>
+              <input v-model.number="physForm.spad_jointing" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>抽穗期 SPAD</label>
+              <input v-model.number="physForm.spad_heading" type="number" step="0.1" min="0" />
+            </div>
+            <div class="form-item">
+              <label>灌浆期 SPAD</label>
+              <input v-model.number="physForm.spad_filling" type="number" step="0.1" min="0" />
+            </div>
+          </div>
+
+          <div class="section-subtitle">光合速率</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>抽穗期光合速率</label>
+              <input v-model.number="physForm.photo_rate_heading" type="number" step="0.01" min="0" />
+              <span class="unit">μmol CO₂/m²/s</span>
+            </div>
+            <div class="form-item">
+              <label>灌浆期光合速率</label>
+              <input v-model.number="physForm.photo_rate_filling" type="number" step="0.01" min="0" />
+              <span class="unit">μmol CO₂/m²/s</span>
+            </div>
+          </div>
+
+          <div class="section-subtitle">活性铁含量</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>拔节期活性铁</label>
+              <input v-model.number="physForm.active_fe_jointing" type="number" step="0.01" min="0" />
+              <span class="unit">μg/g FW</span>
+            </div>
+            <div class="form-item">
+              <label>灌浆期活性铁</label>
+              <input v-model.number="physForm.active_fe_filling" type="number" step="0.01" min="0" />
+              <span class="unit">μg/g FW</span>
+            </div>
+          </div>
+
+          <div class="section-subtitle">酶活性</div>
+          <div class="form-grid">
+            <div class="form-item">
+              <label>CAT 活性</label>
+              <input v-model.number="physForm.cat" type="number" step="0.01" min="0" />
+              <span class="unit">U/mg protein</span>
+            </div>
+            <div class="form-item">
+              <label>POD 活性</label>
+              <input v-model.number="physForm.pod" type="number" step="0.01" min="0" />
+              <span class="unit">U/mg protein</span>
+            </div>
+          </div>
+
+          <button class="btn-submit" @click="submitPhysiological" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交生理指标' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 产量数据 -->
+      <div v-if="activeTab === 'yield'">
+        <div class="card">
+          <div class="card-title">🌾 产量数据</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 产量构成因素</div>
+
+          <div class="form-grid">
+            <div class="form-item">
+              <label>亩穗数</label>
+              <input v-model.number="yieldForm.spikes_per_mu" type="number" step="0.1" min="0" />
+              <span class="unit">万穗/亩</span>
+            </div>
+            <div class="form-item">
+              <label>穗粒数</label>
+              <input v-model.number="yieldForm.grains_per_spike" type="number" step="0.1" min="0" />
+              <span class="unit">粒/穗</span>
+            </div>
+            <div class="form-item">
+              <label>千粒重第1组</label>
+              <input v-model.number="yieldForm.thousand_grain_wt_1" type="number" step="0.01" min="0" />
+              <span class="unit">g</span>
+            </div>
+            <div class="form-item">
+              <label>千粒重第2组</label>
+              <input v-model.number="yieldForm.thousand_grain_wt_2" type="number" step="0.01" min="0" />
+              <span class="unit">g</span>
+            </div>
+            <div class="form-item">
+              <label>实际产量</label>
+              <input v-model.number="yieldForm.actual_yield" type="number" step="0.1" min="0" />
+              <span class="unit">kg/亩</span>
+            </div>
+            <div class="form-item">
+              <label>收获指数</label>
+              <input v-model.number="yieldForm.harvest_index" type="number" step="0.01" min="0" max="1" />
+            </div>
+          </div>
+
+          <div v-if="calcTheoreticalYield !== null" class="auto-calc">
+            💡 理论产量 = {{ yieldForm.spikes_per_mu || 0 }} × {{ yieldForm.grains_per_spike || 0 }}
+            × {{ avgTkw }} / 100 = <strong>{{ calcTheoreticalYield }} kg/亩</strong>
+          </div>
+
+          <button class="btn-submit" @click="submitYield" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交产量数据' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 品质数据 -->
+      <div v-if="activeTab === 'quality'">
+        <div class="card">
+          <div class="card-title">🏆 品质数据</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 籽粒品质指标</div>
+
+          <div class="form-grid">
+            <div class="form-item">
+              <label>籽粒蛋白质含量</label>
+              <input v-model.number="qualForm.grain_protein" type="number" step="0.1" min="0" />
+              <span class="unit">%</span>
+            </div>
+            <div class="form-item">
+              <label>湿面筋含量</label>
+              <input v-model.number="qualForm.wet_gluten" type="number" step="0.1" min="0" />
+              <span class="unit">%</span>
+            </div>
+            <div class="form-item">
+              <label>SDS 沉降值</label>
+              <input v-model.number="qualForm.sds_sedimentation" type="number" step="0.1" min="0" />
+              <span class="unit">mL</span>
+            </div>
+            <div class="form-item">
+              <label>籽粒铁含量</label>
+              <input v-model.number="qualForm.grain_fe" type="number" step="0.1" min="0" />
+              <span class="unit">mg/kg</span>
+            </div>
+            <div class="form-item">
+              <label>面粉铁含量</label>
+              <input v-model.number="qualForm.flour_fe" type="number" step="0.1" min="0" />
+              <span class="unit">mg/kg</span>
+            </div>
+          </div>
+
+          <button class="btn-submit" @click="submitQuality" :disabled="submitting">
+            {{ submitting ? '提交中...' : '提交品质数据' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 数据查询 -->
+      <div v-if="activeTab === 'query'">
+        <div class="card" v-if="submittedRecords.length > 0">
+          <div class="card-title">📊 已提交数据</div>
+          <div class="card-subtitle">{{ plotInfo.plot_code }} - 历史记录</div>
+          <div v-for="rec in submittedRecords" :key="rec.table"
+               :style="{marginBottom:'16px'}">
+            <div style="font-weight:600;font-size:14px;margin-bottom:8px;">
+              {{ rec.label }}
+              <span :class="['badge', rec.count > 0 ? 'badge-done' : 'badge-pending']">
+                {{ rec.count > 0 ? '已有数据' : '暂无数据' }}
+              </span>
+            </div>
+            <div v-if="rec.data" class="data-table">
+              <div v-for="(val, key) in rec.data" :key="key" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+                <span style="color:#86868b;">{{ formatField(key) }}</span>
+                <span style="color:#1d1d1f;">{{ val ?? '-' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="card" style="text-align:center;color:#86868b;">
+          <div style="font-size:32px;margin-bottom:8px;">📭</div>
+          还没有提交过数据，快去录入吧！
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <div class="footer">
+      纳米铁肥小麦试验数据采集系统<br>
+      数据提交后自动记录操作日志
+    </div>
+  </div>
+
+  <!-- Toast 提示 -->
+  <div v-if="toast.show" :class="['toast', toast.type]">{{ toast.msg }}</div>
+</div>
+
+<!-- Vue 3 加载 -->
+<script src="https://unpkg.com/vue@3.4.21/dist/vue.global.js"></script>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+
+const app = createApp({
+  setup() {
+    // 常量
+    const TABS = [
+      { key: 'soil', label: '土壤', icon: '🪣' },
+      { key: 'phenology', label: '物候期', icon: '📅' },
+      { key: 'emergence', label: '出苗', icon: '🌱' },
+      { key: 'agronomic', label: '农艺', icon: '🌿' },
+      { key: 'physiological', label: '生理', icon: '🔬' },
+      { key: 'yield', label: '产量', icon: '🌾' },
+      { key: 'quality', label: '品质', icon: '🏆' },
+      { key: 'query', label: '查询', icon: '📊' },
+    ];
+
+    const TABLE_MAP = {
+      soil: { table: 'soil_data', label: '土壤数据' },
+      phenology: { table: 'phenology', label: '物候期' },
+      emergence: { table: 'emergence', label: '出苗调查' },
+      agronomic: { table: 'agronomic_traits', label: '农艺性状' },
+      physiological: { table: 'physiological', label: '生理指标' },
+      yield: { table: 'yield_data', label: '产量数据' },
+      quality: { table: 'quality_data', label: '品质数据' },
+    };
+
+    const FIELD_NAMES = {
+      ph: 'pH', fe_available: '有效铁(mg/kg)', fe_total: '全铁(g/kg)',
+      organic_matter: '有机质(g/kg)', p_available: '有效磷(mg/kg)', k_available: '有效钾(mg/kg)',
+      phase: '阶段', sowing: '播种', emergence: '出苗', tillering: '分蘖',
+      overwinter: '越冬', regreening: '返青', jointing: '拔节',
+      heading: '抽穗', flowering: '开花', filling: '灌浆', maturity: '成熟',
+      seeds_sown: '播种粒数', emerged_7d: '7天出苗数', rate_7d: '7天出苗率(%)',
+      emerged_14d: '14天出苗数', rate_14d: '14天出苗率(%)', basic_seedlings: '基本苗(万/亩)',
+      tillers_prewinter: '越冬前分蘖', tillers_postregreen: '返青后分蘖', tillers_jointing: '拔节期分蘖',
+      plant_height: '株高(cm)', lai_jointing: '拔节LAI', lai_heading: '抽穗LAI',
+      dry_weight_jointing: '拔节干重(g)', dry_weight_heading: '抽穗干重(g)',
+      dry_weight_maturity: '成熟干重(g)', root_dry_weight: '根系干重(g)',
+      spad_jointing: '拔节SPAD', spad_heading: '抽穗SPAD', spad_filling: '灌浆SPAD',
+      photo_rate_heading: '抽穗光合速率', photo_rate_filling: '灌浆光合速率',
+      active_fe_jointing: '拔节活性铁', active_fe_filling: '灌浆活性铁',
+      cat: 'CAT活性', pod: 'POD活性',
+      spikes_per_mu: '亩穗数(万/亩)', grains_per_spike: '穗粒数(粒)',
+      thousand_grain_wt_1: '千粒重1(g)', thousand_grain_wt_2: '千粒重2(g)',
+      theoretical_yield: '理论产量(kg/亩)', actual_yield: '实际产量(kg/亩)',
+      harvest_index: '收获指数',
+      grain_protein: '蛋白质(%)', wet_gluten: '湿面筋(%)',
+      sds_sedimentation: 'SDS沉降值(mL)', grain_fe: '籽粒铁(mg/kg)',
+      flour_fe: '面粉铁(mg/kg)', plot_code: '小区编号', block: '区组',
+      treatment: '处理', id: 'ID', base_code: '基地编号',
+    };
+
+    // 状态
+    const loading = ref(true);
+    const error = ref('');
+    const operator = ref('');               // 向后兼容：填写操作人姓名
+    const authUser = ref(null);             // { id, username, real_name, role, token } 登录用户
+    const loginLoading = ref(false);
+    const submitting = ref(false);
+    const activeTab = ref('soil');
+    const toast = reactive({ show: false, msg: '', type: 'success' });
+
+    // 表单：手机端用户名密码登录（与电脑端一致）
+    const loginForm = reactive({ username: '', password: '', showPwd: false });
+
+    const plotInfo = reactive({
+      id: null, plot_code: '', block: '', treatment: '', treatment_name: '', base_code: ''
+    });
+
+    const soilForm = reactive({ phase: '播前', ph: null, fe_available: null, fe_total: null,
+      organic_matter: null, p_available: null, k_available: null });
+
+    const phenForm = reactive({ sowing: '', emergence: '', tillering: '', overwinter: '',
+      regreening: '', jointing: '', heading: '', flowering: '', filling: '', maturity: '' });
+
+    const emForm = reactive({ seeds_sown: null, emerged_7d: null, emerged_14d: null, basic_seedlings: null });
+
+    const agForm = reactive({ tillers_prewinter: null, tillers_postregreen: null, tillers_jointing: null,
+      plant_height: null, lai_jointing: null, lai_heading: null,
+      dry_weight_jointing: null, dry_weight_heading: null, dry_weight_maturity: null, root_dry_weight: null });
+
+    const physForm = reactive({ spad_jointing: null, spad_heading: null, spad_filling: null,
+      photo_rate_heading: null, photo_rate_filling: null,
+      active_fe_jointing: null, active_fe_filling: null, cat: null, pod: null });
+
+    const yieldForm = reactive({ spikes_per_mu: null, grains_per_spike: null,
+      thousand_grain_wt_1: null, thousand_grain_wt_2: null, actual_yield: null, harvest_index: null });
+
+    const qualForm = reactive({ grain_protein: null, wet_gluten: null,
+      sds_sedimentation: null, grain_fe: null, flour_fe: null });
+
+    const submittedRecords = ref([]);
+
+    // 计算属性
+    const avgTkw = computed(() => {
+      const vals = [yieldForm.thousand_grain_wt_1, yieldForm.thousand_grain_wt_2].filter(v => v !== null && v !== undefined && v > 0);
+      if (vals.length === 0) return 0;
+      return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
+    });
+
+    const calcTheoreticalYield = computed(() => {
+      const spikes = yieldForm.spikes_per_mu;
+      const grains = yieldForm.grains_per_spike;
+      const tkw = parseFloat(avgTkw.value);
+      if (!spikes || !grains || !tkw) return null;
+      return Math.round(spikes * grains * tkw / 100 * 10) / 10;
+    });
+
+    // 方法
+    function showToast(msg, type = 'success') {
+      toast.msg = msg; toast.type = type; toast.show = true;
+      setTimeout(() => toast.show = false, 2500);
+    }
+
+    function calcRate(emerged, seeds) {
+      if (!emerged || !seeds || seeds <= 0) return '';
+      return (emerged / seeds * 100).toFixed(1) + '%';
+    }
+
+    function formatField(key) {
+      return FIELD_NAMES[key] || key;
+    }
+
+    async function apiFetch(url, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...options.headers };
+      // 登录后自动带上 JWT
+      if (authUser.value && authUser.value.token) {
+        headers['Authorization'] = 'Bearer ' + authUser.value.token;
+      }
+      const res = await fetch(url, { headers, ...options });
+      if (!res.ok) {
+        const detail = await res.json().then(d => d.detail || res.statusText).catch(() => res.statusText);
+        throw new Error(detail);
+      }
+      const json = await res.json();
+      // 后端统一返回 {success, message, data} 格式，提取 data 字段
+      if (json && 'data' in json) {
+        return json.data;
+      }
+      return json;
+    }
+
+    async function loadPlotInfo(plotCode) {
+      try {
+        const data = await apiFetch(`/api/v1/plots/${encodeURIComponent(plotCode)}`);
+        Object.assign(plotInfo, data);
+        return true;
+      } catch (e) {
+        error.value = `找不到小区：${plotCode}。请确认二维码有效。`;
+        return false;
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function doLogin() {
+      if (!loginForm.username.trim()) {
+        showToast('请输入用户名', 'error');
+        return;
+      }
+      if (!loginForm.password) {
+        showToast('请输入登录密码', 'error');
+        return;
+      }
+      loginLoading.value = true;
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: loginForm.username.trim(),
+            password: loginForm.password,
+            is_mobile: true,        // 标记为手机端登录，技术员账号放行
+          })
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = (payload && payload.detail)
+            || (payload && payload.message)
+            || `登录失败（${res.status}）`;
+          throw new Error(msg);
+        }
+        const data = payload.data || payload;
+        const u = data.user;
+        authUser.value = {
+          id: u.id,
+          username: u.username,
+          real_name: u.real_name,
+          role: u.role,
+          first_login: !!u.first_login,
+          token: data.access_token,
+        };
+        operator.value = u.real_name;
+        // 首次登录的技术员/用户：强制修改密码后继续
+        if (u.first_login) {
+          showToast('首次登录，请先修改密码', 'warn');
+          await changeFirstPassword(authUser.value.token);
+        } else {
+          showToast(`欢迎，${u.real_name}`);
+        }
+      } catch (e) {
+        showToast(e.message || '登录失败，请重试', 'error');
+      } finally {
+        loginLoading.value = false;
+      }
+    }
+
+    // 首次登录强制改密码（UI 用 confirm/prompt 先简单实现；若需要更漂亮可再做）
+    async function changeFirstPassword(token) {
+      const oldPw = loginForm.password;
+      const newPw1 = prompt('首次登录必须修改密码。请输入【新密码】（至少 6 位）：');
+      if (!newPw1 || newPw1.length < 6) {
+        showToast('新密码至少 6 位，已取消登录', 'error');
+        logout(true);
+        throw new Error('cancel');
+      }
+      const newPw2 = prompt('请再次输入【新密码】进行确认：');
+      if (newPw1 !== newPw2) {
+        showToast('两次输入的新密码不一致', 'error');
+        logout(true);
+        throw new Error('mismatch');
+      }
+      if (newPw1 === oldPw) {
+        showToast('新密码不能与旧密码相同', 'error');
+        logout(true);
+        throw new Error('same');
+      }
+      try {
+        const res = await fetch('/api/v1/auth/change-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify({ old_password: oldPw, new_password: newPw1 }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.detail || d.message || '密码修改失败');
+        }
+        // 刷新密码记录：下次直接用新密码
+        loginForm.password = newPw1;
+        showToast('密码修改成功，可以开始采集啦');
+      } catch (e) {
+        showToast('改密失败：' + e.message, 'error');
+        logout(true);
+        throw e;
+      }
+    }
+
+    function logout(silent = false) {
+      authUser.value = null;
+      operator.value = '';
+      loginForm.username = '';
+      loginForm.password = '';
+      loginForm.showPwd = false;
+      if (!silent) showToast('已退出登录');
+    }
+
+    async function submitData(tableKey, data, extra = {}) {
+      submitting.value = true;
+      try {
+        const payload = {
+          plot_code: plotInfo.plot_code,
+          data: data,
+          extra: extra,
+        };
+        await apiFetch(`/api/v1/table/${TABLE_MAP[tableKey].table}`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        // 同时记录操作日志
+        try {
+          await fetch('/api/v1/table/operation_log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              plot_code: plotInfo.plot_code,
+              data: {
+                date: new Date().toISOString().slice(0, 10),
+                time: new Date().toTimeString().slice(0, 5),
+                op_type: `提交${TABLE_MAP[tableKey].label}`,
+                operator: operator.value,
+                remarks: `${TABLE_MAP[tableKey].label}数据录入`
+              }
+            })
+          });
+        } catch (_) { /* 操作日志失败不影响主流程 */ }
+
+        showToast('✅ 提交成功！');
+      } catch (e) {
+        showToast('❌ ' + (e.message || '提交失败'), 'error');
+      } finally {
+        submitting.value = false;
+      }
+    }
+
+    // 提交各表数据
+    async function submitSoil() {
+      const data = {
+        phase: soilForm.phase,
+        ph: soilForm.ph,
+        fe_available: soilForm.fe_available,
+        fe_total: soilForm.fe_total,
+        organic_matter: soilForm.organic_matter,
+        p_available: soilForm.p_available,
+        k_available: soilForm.k_available,
+      };
+      // soil_data 需要 phase 作为复合键的一部分
+      await submitData('soil', data, { phase: soilForm.phase });
+    }
+
+    async function submitPhenology() {
+      const data = {};
+      ['sowing', 'emergence', 'tillering', 'overwinter', 'regreening',
+       'jointing', 'heading', 'flowering', 'filling', 'maturity'].forEach(k => {
+        if (phenForm[k]) data[k] = phenForm[k];
+      });
+      await submitData('phenology', data);
+    }
+
+    async function submitEmergence() {
+      const rate7 = emForm.seeds_sown > 0 ? Math.round(emForm.emerged_7d / emForm.seeds_sown * 10000) / 100 : null;
+      const rate14 = emForm.seeds_sown > 0 ? Math.round(emForm.emerged_14d / emForm.seeds_sown * 10000) / 100 : null;
+      await submitData('emergence', {
+        seeds_sown: emForm.seeds_sown,
+        emerged_7d: emForm.emerged_7d,
+        rate_7d: rate7,
+        emerged_14d: emForm.emerged_14d,
+        rate_14d: rate14,
+        basic_seedlings: emForm.basic_seedlings,
+      });
+    }
+
+    async function submitAgronomic() {
+      await submitData('agronomic', { ...agForm });
+    }
+
+    async function submitPhysiological() {
+      await submitData('physiological', { ...physForm });
+    }
+
+    async function submitYield() {
+      const tgwVals = [yieldForm.thousand_grain_wt_1, yieldForm.thousand_grain_wt_2].filter(v => v !== null && v !== undefined && v > 0);
+      let theoretical = null;
+      if (yieldForm.spikes_per_mu && yieldForm.grains_per_spike && tgwVals.length > 0) {
+        const avg = tgwVals.reduce((a, b) => a + b, 0) / tgwVals.length;
+        theoretical = Math.round(yieldForm.spikes_per_mu * yieldForm.grains_per_spike * avg / 100 * 10) / 10;
+      }
+      await submitData('yield', {
+        spikes_per_mu: yieldForm.spikes_per_mu,
+        grains_per_spike: yieldForm.grains_per_spike,
+        thousand_grain_wt_1: yieldForm.thousand_grain_wt_1,
+        thousand_grain_wt_2: yieldForm.thousand_grain_wt_2,
+        actual_yield: yieldForm.actual_yield,
+        harvest_index: yieldForm.harvest_index,
+        theoretical_yield: theoretical,
+      });
+    }
+
+    async function submitQuality() {
+      await submitData('quality', { ...qualForm });
+    }
+
+    async function loadRecords() {
+      const results = [];
+      for (const key of Object.keys(TABLE_MAP)) {
+        const info = TABLE_MAP[key];
+        try {
+          const data = await apiFetch(`/api/v1/table/${info.table}`);
+          // apiFetch 已自动解包，data 就是实际的记录数组
+          const plotRecords = (data || []).filter(r => r.plot_code === plotInfo.plot_code);
+          const count = plotRecords.length;
+          const lastRecord = plotRecords.length > 0 ? plotRecords[plotRecords.length - 1] : null;
+          // 只保留关键字段展示
+          const displayData = {};
+          if (lastRecord) {
+            Object.keys(lastRecord).forEach(k => {
+              if (k !== 'id' && k !== 'plot_id' && k !== 'base_code') {
+                displayData[k] = lastRecord[k];
+              }
+            });
+          }
+          results.push({ table: key, label: info.label, count, data: count > 0 ? displayData : null });
+        } catch (e) {
+          results.push({ table: key, label: info.label, count: 0, data: null });
+        }
+      }
+      submittedRecords.value = results;
+    }
+
+    // 监听查询标签页
+    watch(activeTab, (val) => {
+      if (val === 'query' && submittedRecords.value.length === 0) {
+        loadRecords();
+      }
+    });
+
+    // 初始化
+    onMounted(async () => {
+      const params = new URLSearchParams(window.location.search);
+      const plotCode = params.get('plot') || params.get('plot_code');
+      if (!plotCode) {
+        loading.value = false;
+        error.value = '缺少小区参数。请通过扫描二维码进入。';
+        return;
+      }
+      await loadPlotInfo(plotCode);
+
+      // 恢复操作员登录状态
+      const saved = localStorage.getItem('mobile_operator');
+      if (saved) {
+        operator.value = saved;
+      }
+
+      // 保存登录状态
+      watch(operator, (val) => {
+        if (val) localStorage.setItem('mobile_operator', val);
+        else localStorage.removeItem('mobile_operator');
+      });
+    });
+
+    return {
+      // 状态
+      loading, error, operator, authUser, loginLoading, submitting, activeTab,
+      toast, tabs: TABS,
+      // 表单
+      loginForm, plotInfo,
+      soilForm, phenForm, emForm, agForm, physForm, yieldForm, qualForm,
+      // 数据
+      submittedRecords,
+      // 计算
+      avgTkw, calcTheoreticalYield,
+      // 方法
+      doLogin, logout, submitSoil, submitPhenology, submitEmergence,
+      submitAgronomic, submitPhysiological, submitYield, submitQuality,
+      calcRate, formatField,
+    };
+  },
+});
+
+app.mount('#app');
+</script>
+</body>
+</html>

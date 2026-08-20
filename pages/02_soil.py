@@ -16,11 +16,29 @@ setup_sidebar()
 
 st.title("🪣 土壤基础数据")
 
+# ------------------------------------------------------------
+# Handle query parameters for mobile QR‑code entry
+# ------------------------------------------------------------
+query_params = st.experimental_get_query_params()
+plot_param = query_params.get("plot", [None])[0]
+
 plots_df = get_all_plots()
 base_options = sorted({row for row in plots_df["base_code"].dropna().tolist() if row})
 if not base_options:
     base_options = ["000000000000"]
-selected_base = st.selectbox("选择试验基地", options=base_options)
+
+# Determine default base from plot_param if provided
+default_base = None
+if plot_param:
+    matching_row = plots_df[plots_df["plot_code"] == plot_param]
+    if not matching_row.empty:
+        default_base = matching_row.iloc[0]["base_code"]
+
+selected_base = st.selectbox(
+    "选择试验基地",
+    options=base_options,
+    index=base_options.index(default_base) if default_base and default_base in base_options else 0,
+)
 filtered_plots_df = plots_df[plots_df["base_code"] == selected_base]
 plot_options = filtered_plots_df["plot_code"].tolist()
 
@@ -31,7 +49,11 @@ st.markdown("### 📝 录入 / 编辑")
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    selected_plot = st.selectbox("选择小区", options=plot_options)
+    selected_plot = st.selectbox(
+        "选择小区",
+        options=plot_options,
+        index=plot_options.index(plot_param) if plot_param and plot_param in plot_options else 0,
+    )
 with col2:
     phase = st.selectbox("测定阶段", options=["播前", "收获后"])
 with col3:

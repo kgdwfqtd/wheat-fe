@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _TABLE_WHITELIST = {
     "soil_data", "phenology", "emergence", "agronomic_traits",
     "physiological", "yield_data", "quality_data", "operation_log",
+    "fertilization_log", "field_management",
     "plots", "experiment_bases",
 }
 # 重置时可按序清空的表（先子后父，避免 FK 冲突）
@@ -248,13 +249,14 @@ def init_db():
             conn.rollback()
             cur = conn.cursor()
         try:
+            # 唯一约束是 (base_code, plot_code)：不同基地允许相同编号，去重必须按基地维度
             cur.execute("""
                 DELETE FROM plots
                 WHERE id IN (
                     SELECT id FROM (
                         SELECT id,
                                ROW_NUMBER() OVER (
-                                   PARTITION BY plot_code
+                                   PARTITION BY base_code, plot_code
                                    ORDER BY id
                                ) AS rn
                         FROM plots
@@ -555,6 +557,23 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_date ON operation_log(date)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_base_code ON operation_log(base_code)")
 
+        # 数据表统一增加录入归属与时间戳列（幂等），支撑「数据查看」的录入人归属与编辑权限。
+        # 归属 = 最后保存者（updated_by），首次保存时同时记入 created_by。
+        _owner_cols = [
+            "created_by VARCHAR(50) DEFAULT ''",
+            "updated_by VARCHAR(50) DEFAULT ''",
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        ]
+        _owner_tables = [
+            "soil_data", "phenology", "emergence", "agronomic_traits",
+            "physiological", "yield_data", "quality_data", "operation_log",
+            "fertilization_log", "field_management",
+        ]
+        for tbl in _owner_tables:
+            for col_def in _owner_cols:
+                cur.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col_def}")
+
 
 # ============================================================
 # 小区 CRUD
@@ -599,11 +618,19 @@ def get_all_plots(base_code: str | None = None):
     return pd.DataFrame([dict(r) for r in rows])
 
 
-def get_plot_by_code(plot_code):
-    """根据小区编号获取小区信息。"""
+def get_plot_by_code(plot_code, base_code=None):
+    """根据小区编号获取小区信息。
+
+    多基地存在相同 plot_code，传入 base_code 时按 (base_code, plot_code) 精确匹配；
+    缺省保持旧行为（按 plot_code 取第一条）。
+    """
     with get_conn() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT * FROM plots WHERE plot_code = %s", (plot_code,))
+        if base_code:
+            cur.execute("SELECT * FROM plots WHERE base_code = %s AND plot_code = %s",
+                        (base_code, plot_code))
+        else:
+            cur.execute("SELECT * FROM plots WHERE plot_code = %s", (plot_code,))
         row = cur.fetchone()
     return dict(row) if row else None
 
@@ -630,8 +657,12 @@ def reset_all_data():
 # ============================================================
 # 通用 CRUD（支持复合键）
 # ============================================================
-def upsert_record(table: str, plot_id: int, data_dict: dict, extra_keys: dict | None = None):
-    """插入或更新记录。"""
+def upsert_record(table: str, plot_id: int, data_dict: dict, extra_keys: dict | None = None,
+                  created_by: str | None = None, updated_by: str | None = None):
+    """插入或更新记录。
+
+    created_by / updated_by 用于记录归属（数据查看的编辑权限依据 = updated_by，即最后保存者）。
+    """
     _check_table(table)
     if not data_dict:
         return
@@ -657,16 +688,103 @@ def upsert_record(table: str, plot_id: int, data_dict: dict, extra_keys: dict | 
 
         if existing:
             sets = ", ".join(f"{k}=%s" for k in payload.keys())
-            vals = list(payload.values()) + where_vals
+            vals = list(payload.values())
+            if updated_by:
+                sets += ", updated_by=%s"
+                vals.append(updated_by)
+            sets += ", updated_at=CURRENT_TIMESTAMP"
+            # 占位符顺序 = SET 列 在前、WHERE 条件 在后，vals 必须按同一顺序拼接
+            vals += where_vals
             cur.execute(f"UPDATE {table} SET {sets} WHERE {where_clause}", vals)
         else:
             cols = ["plot_id"]
             if extra_keys:
                 cols.extend(extra_keys.keys())
             cols.extend(payload.keys())
+            if created_by:
+                cols.append("created_by")
+                payload["created_by"] = created_by
+            if updated_by:
+                cols.append("updated_by")
+                payload["updated_by"] = updated_by
             placeholders = ", ".join(["%s" for _ in cols])
             vals = where_vals + list(payload.values())
             cur.execute(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders})", vals)
+
+
+def get_record_owner(table: str, plot_id: int, extra_keys: dict | None = None) -> str | None:
+    """返回某小区已有记录的 updated_by（归属人），不存在返回 None。用于写前权限判断。"""
+    _check_table(table)
+    with get_conn() as conn:
+        cur = conn.cursor()
+        where_clause = "plot_id = %s"
+        vals = [plot_id]
+        if extra_keys:
+            for k, v in extra_keys.items():
+                where_clause += f" AND {k}=%s"
+                vals.append(v)
+        cur.execute(f"SELECT updated_by FROM {table} WHERE {where_clause}", vals)
+        row = cur.fetchone()
+    if not row:
+        return None  # 无记录（调用方视为「新建」）
+    return row[0] if row[0] is not None else ""  # 有记录但无归属 → 空串（仅管理员可编辑）
+
+
+def get_record_by_id(table: str, record_id: int) -> dict | None:
+    """按主键 id 读取一条记录（含 updated_by 归属），不存在返回 None。"""
+    _check_table(table)
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(f"SELECT * FROM {table} WHERE id = %s", (int(record_id),))
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def update_record_by_id(table: str, record_id: int, data_dict: dict, updated_by: str | None = None):
+    """按主键 id 更新记录的指定字段，并写入 updated_by / updated_at。"""
+    _check_table(table)
+    if not data_dict:
+        return
+    with get_conn() as conn:
+        cur = conn.cursor()
+        sets = ", ".join(f"{k}=%s" for k in data_dict.keys())
+        vals = list(data_dict.values())
+        if updated_by:
+            sets += ", updated_by=%s"
+            vals.append(updated_by)
+        sets += ", updated_at=CURRENT_TIMESTAMP"
+        vals.append(int(record_id))
+        cur.execute(f"UPDATE {table} SET {sets} WHERE id = %s", vals)
+
+
+def query_data_view(table: str, base_code: str | None = None):
+    """返回某数据表的记录，附带小区信息（LEFT JOIN，plot_id 为空的记录小区回显为「全基地」）。
+
+    供「数据查看」页聚合查询使用；包含 created_by/updated_by/updated_at 归属列。
+    """
+    _check_table(table)
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        sql = f"""
+            SELECT p.base_code AS plot_base_code, p.plot_code, p.block, p.treatment, t.*
+            FROM {table} t
+            LEFT JOIN plots p ON t.plot_id = p.id
+        """
+        vals: list = []
+        if base_code:
+            sql += " WHERE t.base_code = %s"
+            vals.append(base_code)
+        sql += " ORDER BY t.id"
+        cur.execute(sql, vals)
+        rows = cur.fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        # 无小区归属（如全基地操作日志）时回显
+        if d.get("plot_code") is None:
+            d["plot_code"] = "全基地"
+        out.append(d)
+    return out
 
 
 def get_record(table: str, plot_id: int, extra_keys: dict | None = None):
@@ -731,7 +849,8 @@ def get_all_records(table: str, as_dataframe=True):
 # ============================================================
 def add_operation(date, op_type, treatment="", block="", time="",
                    dosage="", weather="", temperature=None, humidity=None,
-                   operator="", remarks="", plot_id=None, base_code=None):
+                   operator="", remarks="", plot_id=None, base_code=None,
+                   created_by=None, updated_by=None):
     """添加操作日志"""
     if not base_code and plot_id is not None:
         with get_conn() as conn:
@@ -742,14 +861,17 @@ def add_operation(date, op_type, treatment="", block="", time="",
                 base_code = row[0]
     base_code = base_code or "000000000000"
 
+    owner_by = updated_by or created_by
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO operation_log (plot_id, base_code, date, time, op_type, treatment, block,
-                                       dosage, weather, temperature, humidity, operator, remarks)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                       dosage, weather, temperature, humidity, operator, remarks,
+                                       created_by, updated_by, created_at, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
         """, (plot_id, base_code, date, time, op_type, treatment, block,
-              dosage, weather, temperature, humidity, operator, remarks))
+              dosage, weather, temperature, humidity, operator, remarks,
+              owner_by, owner_by))
 
 
 def get_operations(limit=50):
@@ -786,7 +908,7 @@ def get_completion_stats():
             cur.execute("SELECT COUNT(DISTINCT plot_id) FROM soil_data WHERE phase='收获后'")
             cnt_soil_post = cur.fetchone()[0]
             stats["soil_data"] = {
-                "filled": f"{cnt_soil_pre}/{cnt_soil_post}",
+                "filled": cnt_soil_pre + cnt_soil_post,
                 "total": total_plots,
                 "pct_pre": round(cnt_soil_pre / total_plots * 100, 1),
                 "pct_post": round(cnt_soil_post / total_plots * 100, 1),
@@ -816,23 +938,24 @@ def get_completion_stats():
 # 仪表盘矩阵
 # ============================================================
 def get_treatment_table_matrix():
-    """返回处理 × 数据表完成度矩阵。"""
-    tables_map = {
-        "soil_data": "soil_data",
-        "phenology": "phenology",
-        "emergence": "emergence",
-        "agronomic_traits": "agronomic_traits",
-        "physiological": "physiological",
-        "yield_data": "yield_data",
-        "quality_data": "quality_data",
-    }
+    """返回处理 × 数据表完成度矩阵（百分比，0-100 整数）。
+
+    1:1 数据表（物候/出苗/农艺/生理/产量/品质）：按 已录小区数 / 该处理小区总数 计；
+    土壤数据：播前 + 收获后 两条记录，按 已录记录数 / (该处理小区总数 × 2) 计。
+    """
+    tables_1to1 = ["phenology", "emergence", "agronomic_traits",
+                   "physiological", "yield_data", "quality_data"]
     from utils import TREATMENT_CODES
 
     with get_conn() as conn:
         cur = conn.cursor()
-        result: dict[str, dict[str, str]] = {trt: {} for trt in TREATMENT_CODES}
+        result: dict[str, dict[str, int]] = {trt: {} for trt in TREATMENT_CODES}
 
-        for key, tbl in tables_map.items():
+        # 每个处理的小区总数（一次查询）
+        cur.execute("SELECT treatment, COUNT(*) AS total FROM plots GROUP BY treatment")
+        total_map = {r[0]: r[1] for r in cur.fetchall()}
+
+        for tbl in tables_1to1:
             _check_table(tbl)
             cur.execute(f"""
                 SELECT p.treatment, COUNT(DISTINCT t.plot_id) AS cnt
@@ -840,19 +963,27 @@ def get_treatment_table_matrix():
                 LEFT JOIN {tbl} t ON p.id = t.plot_id
                 GROUP BY p.treatment
             """)
-            rows = cur.fetchall()
-            cnt_map = {r[0]: r[1] for r in rows}
-
-            cur.execute("""
-                SELECT treatment, COUNT(*) AS total FROM plots GROUP BY treatment
-            """)
-            trt_plot_counts = cur.fetchall()
-            total_map = {r[0]: r[1] for r in trt_plot_counts}
-
+            cnt_map = {r[0]: r[1] for r in cur.fetchall()}
             for trt in TREATMENT_CODES:
-                cnt = cnt_map.get(trt, 0)
                 total = total_map.get(trt, 0)
-                result[trt][key] = f"{cnt}/{total}" if total else "0/0"
+                cnt = cnt_map.get(trt, 0)
+                result[trt][tbl] = round(cnt / total * 100) if total else 0
+
+        # 土壤：区分播前 / 收获后，共两个阶段
+        cur.execute("""
+            SELECT p.treatment,
+                   COUNT(DISTINCT t.plot_id) FILTER (WHERE t.phase = '播前') AS pre,
+                   COUNT(DISTINCT t.plot_id) FILTER (WHERE t.phase = '收获后') AS post
+            FROM plots p
+            LEFT JOIN soil_data t ON p.id = t.plot_id
+            GROUP BY p.treatment
+        """)
+        soil_map = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+        for trt in TREATMENT_CODES:
+            total = total_map.get(trt, 0)
+            pre, post = soil_map.get(trt, (0, 0))
+            result[trt]["soil_data"] = round((pre + post) / (total * 2) * 100) if total else 0
+
     return result
 
 

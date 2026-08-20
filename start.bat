@@ -51,9 +51,11 @@ start "" /b cmd /c "timeout /t 5 /nobreak >nul && start http://localhost:8001/"
 
 echo ============================================
 echo   Starting server...
-echo   UI: http://localhost:8001
-echo   API: http://localhost:8001/api/v1/
-echo   Docs: http://localhost:8001/docs
+echo   UI (this PC): http://localhost:8001
+echo   API:         http://localhost:8001/api/v1/
+echo   Docs:        http://localhost:8001/docs
+echo   Mobile:      Scan QR code on the website
+echo   Mobile PW:   wheat123 (configurable via MOBILE_PASSWORD env)
 echo   Press Ctrl+C to stop
 echo ============================================
 echo.

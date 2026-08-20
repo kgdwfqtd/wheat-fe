@@ -112,6 +112,7 @@ if isinstance(soil_stats.get("pct_pre"), (int, float)):
 # ----- 处理 × 数据表完成度矩阵（一次查询，无 N+1）-----
 st.markdown("---")
 st.markdown("### 📋 各处理 × 数据表 完成情况")
+st.caption("百分比 = 已录入小区数 ÷ 该处理小区总数（土壤按「播前 + 收获后」两阶段计）")
 
 tables_1to1 = ["phenology", "emergence", "agronomic_traits",
                "physiological", "yield_data", "quality_data"]
@@ -124,7 +125,11 @@ for trt in TREATMENT_CODES:
     row_data = [trt, TREATMENT_NAMES.get(trt, "")]
     trt_matrix = matrix.get(trt, {})
     for tbl in all_tbl_keys:
-        row_data.append(trt_matrix.get(tbl, "—"))
+        val = trt_matrix.get(tbl, "—")
+        if isinstance(val, (int, float)):
+            row_data.append(f"{int(round(val))}%")
+        else:
+            row_data.append("—")
     matrix_data.append(row_data)
 
 matrix_df = pd.DataFrame(matrix_data, columns=["处理", "名称"] + tbl_short)
@@ -142,4 +147,4 @@ else:
 
 # ----- 底部信息 -----
 st.markdown("---")
-st.caption("💡 提示：使用左侧导航栏切换页面，在手机上也可方便使用。数据存储在本地 experiment.db 文件中。")
+st.caption("💡 提示：使用左侧导航栏切换页面，在手机上也可方便使用。数据存储在 PostgreSQL（通过环境变量配置），请参阅 .env.example 设置数据库连接。")

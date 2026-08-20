@@ -4,10 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,32 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "timestamp": datetime.utcnow().isoformat(),
         "version": "0.2.0",
     }
+
+# ------------------------------------------------------------
+# Mobile entry endpoint used by QR codes
+# ------------------------------------------------------------
+@app.get("/mobile_entry")
+async def mobile_entry(
+    plot: Optional[str] = Query(None),
+    api: Optional[str] = Query(None),
+):
+    """Redirect QR‑code scans to the Streamlit front‑end.
+
+    The QR code generated in :func:`utils.generate_qr_code` encodes a URL
+    ``http://<api_host>:8001/mobile_entry?plot=<plot_code>`` (optionally with
+    an ``api`` parameter).  The front‑end UI runs on Streamlit at port 8501.
+    This endpoint performs an HTTP 307 redirect to the Streamlit UI, preserving
+    the ``plot`` query parameter so the UI can pre‑select the appropriate
+    small‑plot.
+    """
+    # Base URL of the Streamlit front‑end.  Using localhost assumes the mobile
+    # device can resolve the same host IP used to call this API.
+    frontend_base = "http://localhost:8501"
+    if plot:
+        redirect_url = f"{frontend_base}?plot={plot}"
+    else:
+        redirect_url = frontend_base
+    return RedirectResponse(url=redirect_url)
 
 
 @app.get("/api/v1/config")
@@ -377,6 +405,18 @@ async def submit_data(
     # 过滤 None 值
     clean_data = {k: v for k, v in data.items() if v is not None}
 
+    # 权限：更新已有记录时，仅管理员或记录归属人（updated_by = 本人）可改；
+    # 无归属（旧数据 updated_by 为空）的记录仅管理员可改，与桌面端规则一致。
+    if record:
+        owner = getattr(record, "updated_by", "") or ""
+        if current_user.role != "admin":
+            if not owner:
+                raise HTTPException(status_code=403, detail="该记录暂无归属，仅管理员可编辑")
+            if owner != current_user.username:
+                raise HTTPException(status_code=403, detail="无权限编辑他人录入的数据")
+        clean_data.pop("created_by", None)
+        clean_data.pop("updated_by", None)
+
     action = "created"
     if record:
         # 更新已有记录
@@ -384,9 +424,12 @@ async def submit_data(
         for key, value in clean_data.items():
             if hasattr(record, key):
                 setattr(record, key, value)
+        record.updated_by = current_user.username
     else:
         # 创建新记录
-        record = model(**clean_data)
+        clean_data.pop("created_by", None)
+        clean_data.pop("updated_by", None)
+        record = model(**clean_data, created_by=current_user.username, updated_by=current_user.username)
         db.add(record)
         action = "created"
 
@@ -501,6 +544,8 @@ async def create_operation(
         humidity=data.get("humidity"),
         operator=current_user.real_name,
         remarks=data.get("remarks", ""),
+        created_by=current_user.username,
+        updated_by=current_user.username,
     )
     db.add(operation)
     await db.commit()

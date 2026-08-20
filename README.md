@@ -69,13 +69,70 @@ wheat-fe/
 │   └── public_api.py             # 统一公开入口
 ├── pages/                        # 旧版 Streamlit 页面
 ├── mobile_api/                   # 历史兼容接口（逐步替换）
-├── database.py                   # 旧数据库兼容层
+├── database.py                   # PostgreSQL 数据库兼容层 (使用 psycopg2)
 ├── config.py                     # 兼容层
 ├── .env.example                  # 环境变量示例
 ├── requirements.txt
 ├── README.md
-└── experiment.db
+└── （使用 PostgreSQL，参见 .env.example 配置）
 ```
+
+## 开发与运行
+
+快速上手（假设使用 Python 3.11）：
+
+1. 创建虚拟环境并安装依赖：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+2. 复制环境示例并修改：
+
+```bash
+cp .env.example .env
+# 编辑 .env 填入真实凭据（尤其是 JWT_SECRET_KEY）
+```
+
+3. 安装并启用 pre-commit：
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+4. 运行测试：
+
+```bash
+pytest -q
+```
+
+## 本地 PostgreSQL（可选）
+
+可以使用提供的 `docker-compose.yml` 快速启动 PostgreSQL 与 Adminer（数据库管理界面）：
+
+```bash
+docker-compose up -d
+# 等待数据库启动后，设置环境变量（Linux/macOS）：
+export DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/wheat_fe"
+export TEST_DATABASE_URL="$DATABASE_URL"
+# Windows PowerShell:
+$env:DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/wheat_fe"
+```
+
+填充示例数据并验证：
+
+```bash
+python scripts/seed_data.py
+python scripts/verify_db.py
+```
+
+
+更多部署与迁移建议见仓库的 `architecture.md`。
+
 
 > 说明：新架构中，后端不再依赖 Streamlit 页面，前端通过 HTTP 接口获取数据，数据逻辑仍由 [database.py](database.py) 和 [wheat_app](wheat_app) 的 repository/service 层提供。
 
@@ -108,7 +165,7 @@ wheat-fe/
 
 - **后端**: FastAPI + Pydantic
 - **前端**: HTML + JavaScript（可后续切换到 React/Vue）
-- **数据库**: PostgreSQL / 兼容现有 SQLite/PG 逻辑
+-- **数据库**: PostgreSQL（不再使用 SQLite）
 - **导出**: Excel (openpyxl)
 - **图表**: Plotly / 前端绘图
 
@@ -127,5 +184,5 @@ wheat-fe/
 
 ## 数据文件
 
-- `experiment.db` — 当前本地数据库
+- 使用 PostgreSQL 存储数据，推荐在 `.env` 中通过 `POSTGRES_*` 系列变量配置连接（参考 `.env.example`）。
 - 导出文件为 `.xlsx` 格式

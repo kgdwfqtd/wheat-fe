@@ -132,7 +132,7 @@ else:
 
         if st.button("🗑️ 确认重置所有数据", type="secondary",
                      disabled=(confirm_text != "确认重置")):
-            reset_all_data()
+            reset_experiment_data()
             st.cache_resource.clear()
             st.success("✅ 已清空所有数据并重新初始化小区。")
             st.rerun()

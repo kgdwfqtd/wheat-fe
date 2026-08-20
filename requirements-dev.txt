@@ -1,0 +1,13 @@
+pytest
+pytest-asyncio
+httpx
+fastapi[all]
+uvicorn
+pytest-mock
+pre-commit
+ruff
+black
+isort
+pip-audit
+alembic
+psycopg2-binary

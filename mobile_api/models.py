@@ -96,6 +96,8 @@ class SoilData(Base):
     k_available = Column(Float)
     cec = Column(Float)
     bulk_density = Column(Float)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
     __table_args__ = (
         UniqueConstraint("plot_id", "phase", name="uq_soil_data_plot_phase"),
@@ -119,6 +121,8 @@ class Phenology(Base):
     flowering = Column(String(20))
     filling = Column(String(20))
     maturity = Column(String(20))
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 class Emergence(Base):
@@ -133,6 +137,8 @@ class Emergence(Base):
     emerged_14d = Column(Integer)
     rate_14d = Column(Float)
     basic_seedlings = Column(Float)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 class AgronomicTraits(Base):
@@ -151,6 +157,8 @@ class AgronomicTraits(Base):
     dry_weight_heading = Column(Float)
     dry_weight_maturity = Column(Float)
     root_dry_weight = Column(Float)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 class Physiological(Base):
@@ -168,6 +176,8 @@ class Physiological(Base):
     active_fe_filling = Column(Float)
     cat = Column(Float)
     pod = Column(Float)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 class YieldData(Base):
@@ -183,6 +193,8 @@ class YieldData(Base):
     theoretical_yield = Column(Float)
     actual_yield = Column(Float)
     harvest_index = Column(Float)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 class QualityData(Base):
@@ -196,6 +208,8 @@ class QualityData(Base):
     sds_sedimentation = Column(Float)
     grain_fe = Column(Float)
     flour_fe = Column(Float)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 class OperationLog(Base):
@@ -215,6 +229,8 @@ class OperationLog(Base):
     humidity = Column(Float)
     operator = Column(String(50))
     remarks = Column(Text)
+    created_by = Column(String(50), default="")
+    updated_by = Column(String(50), default="")
 
 
 # ============================================================
